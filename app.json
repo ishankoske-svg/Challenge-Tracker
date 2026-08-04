@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Challengr",
+    "slug": "challengr",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "challengr",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0F0F17"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0F0F17"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
