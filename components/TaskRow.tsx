@@ -1,9 +1,21 @@
-import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, TouchableOpacity, Image, StyleSheet, Modal, Dimensions } from 'react-native';
 import { useThemeStore } from '../stores/themeStore';
 import { ChallengeTask } from '../lib/challenges';
 import * as ImagePicker from 'expo-image-picker';
-import { CheckCircle2, Circle, Hash, Camera, AlignLeft, Upload, Trash2 } from 'lucide-react-native';
+import {
+  CheckCircle2,
+  Circle,
+  Hash,
+  Camera,
+  AlignLeft,
+  Upload,
+  Trash2,
+  Maximize2,
+  X,
+  Crop,
+  Minimize2,
+} from 'lucide-react-native';
 
 interface TaskRowProps {
   task: ChallengeTask;
@@ -14,6 +26,8 @@ interface TaskRowProps {
   onRemoveMedia?: (taskId: string) => void;
 }
 
+type FrameFitMode = 'contain' | 'cover' | 'auto';
+
 export function TaskRow({
   task,
   value,
@@ -23,6 +37,27 @@ export function TaskRow({
   onRemoveMedia,
 }: TaskRowProps) {
   const { theme } = useThemeStore();
+  const currentUri = mediaUri || value;
+
+  const [fitMode, setFitMode] = useState<FrameFitMode>('contain');
+  const [aspectRatio, setAspectRatio] = useState<number | null>(null);
+  const [fullScreenVisible, setFullScreenVisible] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (currentUri && typeof currentUri === 'string') {
+      Image.getSize(
+        currentUri,
+        (width, height) => {
+          if (width > 0 && height > 0) {
+            setAspectRatio(width / height);
+          }
+        },
+        () => {
+          setAspectRatio(1.33); // fallback 4:3
+        },
+      );
+    }
+  }, [currentUri]);
 
   const handlePickImage = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -34,7 +69,7 @@ export function TaskRow({
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 0.8,
+      quality: 0.9,
     });
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -42,6 +77,24 @@ export function TaskRow({
       onPickMedia?.(task.id, uri);
       onChangeValue(task.id, uri);
     }
+  };
+
+  const cycleFitMode = () => {
+    if (fitMode === 'contain') setFitMode('cover');
+    else if (fitMode === 'cover') setFitMode('auto');
+    else setFitMode('contain');
+  };
+
+  // Determine height based on fitMode and aspect ratio
+  const getFrameStyle = () => {
+    if (fitMode === 'auto' && aspectRatio) {
+      const calculatedHeight = Math.min(Math.max(200, 320 / aspectRatio), 420);
+      return { height: calculatedHeight };
+    }
+    if (fitMode === 'cover') {
+      return { height: 260 };
+    }
+    return { height: 240 };
   };
 
   return (
@@ -125,17 +178,54 @@ export function TaskRow({
 
       {task.type === 'photo' && (
         <View style={styles.photoContainer}>
-          {mediaUri || value ? (
-            <View style={styles.previewBox}>
-              <Image source={{ uri: mediaUri || value }} style={styles.previewImage} />
+          {currentUri ? (
+            <View style={styles.mediaWrapper}>
+              {/* Image Preview Container */}
               <TouchableOpacity
-                style={[styles.removeMediaBtn, { backgroundColor: theme.danger }]}
-                onPress={() => {
-                  onRemoveMedia?.(task.id);
-                  onChangeValue(task.id, null);
-                }}
+                activeOpacity={0.9}
+                onPress={() => setFullScreenVisible(true)}
+                style={[
+                  styles.previewBox,
+                  getFrameStyle(),
+                  { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                ]}
               >
-                <Trash2 color="#FFF" size={14} />
+                <Image
+                  source={{ uri: currentUri }}
+                  style={styles.previewImage}
+                  resizeMode={fitMode === 'auto' ? 'contain' : fitMode}
+                />
+
+                {/* Overlaid Controls */}
+                <View style={styles.controlOverlay}>
+                  <TouchableOpacity
+                    style={[styles.overlayBtn, { backgroundColor: 'rgba(0,0,0,0.65)' }]}
+                    onPress={cycleFitMode}
+                  >
+                    <Crop color="#FFF" size={14} />
+                    <Text style={styles.overlayBtnText}>
+                      {fitMode === 'contain' ? 'Fit' : fitMode === 'cover' ? 'Fill' : 'Auto'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.overlayBtn, { backgroundColor: 'rgba(0,0,0,0.65)' }]}
+                    onPress={() => setFullScreenVisible(true)}
+                  >
+                    <Maximize2 color="#FFF" size={14} />
+                    <Text style={styles.overlayBtnText}>Expand</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.overlayBtn, { backgroundColor: 'rgba(255,107,107,0.85)' }]}
+                    onPress={() => {
+                      onRemoveMedia?.(task.id);
+                      onChangeValue(task.id, null);
+                    }}
+                  >
+                    <Trash2 color="#FFF" size={14} />
+                  </TouchableOpacity>
+                </View>
               </TouchableOpacity>
             </View>
           ) : (
@@ -147,6 +237,26 @@ export function TaskRow({
               <Upload color={theme.accent} size={20} />
               <Text style={[styles.uploadText, { color: theme.accentText }]}>Upload Progress Photo</Text>
             </TouchableOpacity>
+          )}
+
+          {/* Full Screen Lightbox Modal */}
+          {currentUri && (
+            <Modal visible={fullScreenVisible} transparent animationType="fade">
+              <View style={styles.modalBg}>
+                <TouchableOpacity
+                  style={styles.modalCloseBtn}
+                  onPress={() => setFullScreenVisible(false)}
+                >
+                  <X color="#FFF" size={24} />
+                </TouchableOpacity>
+
+                <Image
+                  source={{ uri: currentUri }}
+                  style={styles.modalImage}
+                  resizeMode="contain"
+                />
+              </View>
+            </Modal>
           )}
         </View>
       )}
@@ -237,8 +347,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   uploadBox: {
-    height: 60,
-    borderRadius: 12,
+    height: 68,
+    borderRadius: 14,
     borderWidth: 1,
     borderStyle: 'dashed',
     flexDirection: 'row',
@@ -250,25 +360,61 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  mediaWrapper: {
+    marginTop: 4,
+  },
   previewBox: {
     position: 'relative',
-    height: 120,
-    borderRadius: 12,
+    borderRadius: 14,
+    borderWidth: 1,
     overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   previewImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 12,
-  },
-  removeMediaBtn: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 28,
-    height: 28,
     borderRadius: 14,
+  },
+  controlOverlay: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  overlayBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  overlayBtnText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  modalBg: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
     justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalCloseBtn: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+    padding: 10,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 20,
+  },
+  modalImage: {
+    width: '100%',
+    height: '80%',
+    borderRadius: 16,
   },
 });
