@@ -1,14 +1,156 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  TextInput,
+  Alert,
+} from 'react-native';
+import { useAuthStore } from '../../stores/authStore';
 import { useThemeStore } from '../../stores/themeStore';
+import { useChallengeStore } from '../../stores/challengeStore';
 import { ThemeSwitcher } from '../../components/ThemeSwitcher';
-import { CalendarCheck, AlertCircle } from 'lucide-react-native';
+import { TaskRow } from '../../components/TaskRow';
+import { Challenge, fetchChallengeWithTasks } from '../../lib/challenges';
+import { fetchLogForDate, saveLog, getStreakForChallenge } from '../../lib/logs';
+import { uploadProgressMedia, fetchMediaForLog } from '../../lib/storage';
+import { CalendarCheck, Flame, CheckCircle2, AlertCircle, ChevronDown, Sparkles } from 'lucide-react-native';
 
 export default function LogScreen() {
+  const { user } = useAuthStore();
   const { theme } = useThemeStore();
+  const { activeChallenges, loadChallenges } = useChallengeStore();
+
+  const userId = user?.id || 'demo-user';
+
+  const [selectedChallengeId, setSelectedChallengeId] = useState<string | null>(null);
+  const [currentChallenge, setCurrentChallenge] = useState<Challenge | null>(null);
+  const [logDate, setLogDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+  // Form & state
+  const [taskValues, setTaskValues] = useState<Record<string, any>>({});
+  const [notes, setNotes] = useState<string>('');
+  const [mediaUris, setMediaUris] = useState<Record<string, string>>({});
+  const [streak, setStreak] = useState<number>(0);
+
+  const [loading, setLoading] = useState<boolean>(true);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
+
+  useEffect(() => {
+    loadChallenges(userId);
+  }, [userId]);
+
+  useEffect(() => {
+    if (activeChallenges.length > 0 && !selectedChallengeId) {
+      setSelectedChallengeId(activeChallenges[0].id);
+    }
+  }, [activeChallenges]);
+
+  useEffect(() => {
+    if (selectedChallengeId) {
+      loadChallengeDetailsAndLog(selectedChallengeId, logDate);
+    } else {
+      setLoading(false);
+    }
+  }, [selectedChallengeId, logDate]);
+
+  const loadChallengeDetailsAndLog = async (challengeId: string, date: string) => {
+    setLoading(true);
+    setSavedSuccess(false);
+
+    // 1. Fetch challenge with tasks
+    const { challenge } = await fetchChallengeWithTasks(challengeId);
+    setCurrentChallenge(challenge);
+
+    // 2. Fetch existing log for this date
+    const { log } = await fetchLogForDate(challengeId, userId, date);
+    if (log) {
+      setTaskValues(log.tasks_completed || {});
+      setNotes(log.notes || '');
+
+      // Load media for log
+      const { media } = await fetchMediaForLog(log.id, userId);
+      if (media && media.length > 0) {
+        const mediaMap: Record<string, string> = {};
+        media.forEach((m) => {
+          mediaMap[m.daily_log_id] = m.storage_path;
+        });
+        setMediaUris(mediaMap);
+      }
+    } else {
+      // Reset for new log
+      setTaskValues({});
+      setNotes('');
+      setMediaUris({});
+    }
+
+    // 3. Get streak
+    const currentStreak = await getStreakForChallenge(challengeId, userId);
+    setStreak(currentStreak);
+
+    setLoading(false);
+  };
+
+  const handleTaskValueChange = (taskId: string, val: any) => {
+    setTaskValues((prev) => ({ ...prev, [taskId]: val }));
+  };
+
+  const handlePickMedia = (taskId: string, uri: string) => {
+    setMediaUris((prev) => ({ ...prev, [taskId]: uri }));
+  };
+
+  const handleRemoveMedia = (taskId: string) => {
+    setMediaUris((prev) => {
+      const copy = { ...prev };
+      delete copy[taskId];
+      return copy;
+    });
+  };
+
+  const handleSaveLog = async () => {
+    if (!selectedChallengeId) return;
+
+    setSaving(true);
+    setSavedSuccess(false);
+
+    // 1. Save daily log entry
+    const { log, error } = await saveLog(
+      selectedChallengeId,
+      userId,
+      taskValues,
+      notes,
+      logDate,
+    );
+
+    if (error || !log) {
+      setSaving(false);
+      alert(error || 'Failed to save daily log.');
+      return;
+    }
+
+    // 2. Upload any pending photos/media
+    for (const taskId of Object.keys(mediaUris)) {
+      const uri = mediaUris[taskId];
+      if (uri && (uri.startsWith('file://') || uri.startsWith('data:') || uri.startsWith('blob:'))) {
+        await uploadProgressMedia(userId, log.id, uri, 'image');
+      }
+    }
+
+    // 3. Recalculate streak
+    const newStreak = await getStreakForChallenge(selectedChallengeId, userId);
+    setStreak(newStreak);
+
+    setSaving(false);
+    setSavedSuccess(true);
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      {/* Header */}
       <View style={[styles.topBar, { borderBottomColor: theme.cardBorder }]}>
         <View style={styles.titleGroup}>
           <CalendarCheck color={theme.accent} size={22} />
@@ -17,14 +159,137 @@ export default function LogScreen() {
         <ThemeSwitcher />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-          <AlertCircle color={theme.textMuted} size={40} />
-          <Text style={[styles.cardTitle, { color: theme.textPrimary }]}>Select a Challenge to Log</Text>
-          <Text style={[styles.cardSub, { color: theme.textSecondary }]}>
-            Once you create a challenge in Phase 2, daily task checkboxes, numeric metric inputs (e.g. weight), notes, and media uploads will render here.
-          </Text>
-        </View>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {/* Challenge Selector Pills */}
+        {activeChallenges.length > 0 && (
+          <View style={styles.pickerSection}>
+            <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>SELECT CHALLENGE</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillScroll}>
+              {activeChallenges.map((c) => {
+                const isSelected = c.id === selectedChallengeId;
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[
+                      styles.challengePill,
+                      {
+                        backgroundColor: isSelected ? theme.accent : theme.card,
+                        borderColor: isSelected ? theme.accent : theme.cardBorder,
+                      },
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() => setSelectedChallengeId(c.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.pillText,
+                        { color: isSelected ? '#FFF' : theme.textPrimary },
+                      ]}
+                    >
+                      {c.title}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Empty State if No Active Challenge */}
+        {activeChallenges.length === 0 && (
+          <View style={[styles.emptyCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <AlertCircle color={theme.textMuted} size={44} />
+            <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No Active Challenge</Text>
+            <Text style={[styles.emptySub, { color: theme.textSecondary }]}>
+              Create a challenge in the New tab first to start logging your daily progress!
+            </Text>
+          </View>
+        )}
+
+        {/* Challenge Header & Streak Banner */}
+        {currentChallenge && (
+          <>
+            <View style={[styles.streakBanner, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+              <View style={[styles.fireIcon, { backgroundColor: theme.accentBg }]}>
+                <Flame color={theme.accent} size={24} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.streakCount, { color: theme.textPrimary }]}>{streak} Day Streak</Text>
+                <Text style={[styles.streakSub, { color: theme.textSecondary }]}>
+                  {logDate === new Date().toISOString().split('T')[0] ? "Today's Log Entry" : `Log for ${logDate}`}
+                </Text>
+              </View>
+            </View>
+
+            {/* Saved Toast Banner */}
+            {savedSuccess && (
+              <View style={[styles.successBanner, { backgroundColor: theme.accentBg, borderColor: theme.accentBorder }]}>
+                <CheckCircle2 color={theme.accentText} size={18} />
+                <Text style={[styles.successText, { color: theme.accentText }]}>Log saved successfully!</Text>
+              </View>
+            )}
+
+            {/* Loading Indicator */}
+            {loading ? (
+              <View style={styles.loadingBox}>
+                <ActivityIndicator size="large" color={theme.accent} />
+              </View>
+            ) : (
+              <>
+                {/* Task List */}
+                <Text style={[styles.sectionLabel, { color: theme.textSecondary, marginTop: 12 }]}>
+                  DAILY TASKS ({currentChallenge.tasks?.length || 0})
+                </Text>
+
+                {currentChallenge.tasks?.map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    value={taskValues[task.id]}
+                    onChangeValue={handleTaskValueChange}
+                    mediaUri={mediaUris[task.id]}
+                    onPickMedia={handlePickMedia}
+                    onRemoveMedia={handleRemoveMedia}
+                  />
+                ))}
+
+                {/* Additional Journal Notes */}
+                <Text style={[styles.sectionLabel, { color: theme.textSecondary, marginTop: 16 }]}>
+                  DAILY REFLECTION / NOTES (OPTIONAL)
+                </Text>
+                <TextInput
+                  style={[
+                    styles.notesInput,
+                    { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textPrimary },
+                  ]}
+                  placeholder="How did today's challenge feel? Any wins or struggles?"
+                  placeholderTextColor={theme.textMuted}
+                  multiline
+                  numberOfLines={4}
+                  value={notes}
+                  onChangeText={setNotes}
+                />
+
+                {/* Save CTA Button */}
+                <TouchableOpacity
+                  style={[styles.saveBtn, { backgroundColor: theme.accent }]}
+                  activeOpacity={0.85}
+                  onPress={handleSaveLog}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <View style={styles.btnContent}>
+                      <CheckCircle2 color="#FFF" size={20} />
+                      <Text style={styles.saveBtnText}>Save Today's Log</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -54,22 +319,115 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
+    paddingBottom: 40,
   },
-  card: {
+  pickerSection: {
+    marginBottom: 16,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    marginBottom: 10,
+  },
+  pillScroll: {
+    flexDirection: 'row',
+  },
+  challengePill: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginRight: 10,
+  },
+  pillText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  streakBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  fireIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  streakCount: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  streakSub: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  successBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  successText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  loadingBox: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  notesInput: {
+    height: 90,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    fontSize: 14,
+    borderWidth: 1,
+    textAlignVertical: 'top',
+  },
+  saveBtn: {
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 24,
+  },
+  btnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  saveBtnText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  emptyCard: {
     borderRadius: 20,
-    padding: 28,
+    padding: 32,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderStyle: 'dashed',
+    marginTop: 20,
   },
-  cardTitle: {
-    fontSize: 17,
+  emptyTitle: {
+    fontSize: 18,
     fontWeight: '700',
-    marginTop: 12,
-    marginBottom: 6,
+    marginTop: 16,
+    marginBottom: 8,
   },
-  cardSub: {
+  emptySub: {
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
