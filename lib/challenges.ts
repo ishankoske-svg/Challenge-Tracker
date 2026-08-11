@@ -8,22 +8,22 @@ const DEMO_CHALLENGES_KEY = '@challengr_demo_challenges';
 
 export type ChallengeCategory = 'fitness' | 'coding' | 'academics' | 'language' | 'mindset' | 'custom';
 export type ChallengeStatus = 'active' | 'completed' | 'failed' | 'paused';
-export type DifficultyMode = 'hardcore' | 'hard' | 'medium' | 'easy';
+export type DifficultyMode = 'hardcore' | 'hard' | 'medium' | 'easy' | 'relaxed';
 
 export const DIFFICULTY_CONFIG: Record<DifficultyMode, { label: string; basePenalties: number; xpMultiplier: number; color: string; emoji: string; description: string }> = {
-  hardcore: { label: 'Hardcore', basePenalties: 0, xpMultiplier: 2.0, color: '#FF4757', emoji: '🔥', description: 'Zero room for error. Miss once and it\'s over.' },
-  hard:     { label: 'Hard',     basePenalties: 3, xpMultiplier: 1.5, color: '#FFA502', emoji: '⚡', description: 'Minimal slack. Builds serious discipline.' },
-  medium:   { label: 'Medium',   basePenalties: 7, xpMultiplier: 1.2, color: '#2ED573', emoji: '💪', description: 'Balanced. Allows for real-life bumps.' },
-  easy:     { label: 'Easy',     basePenalties: 15, xpMultiplier: 1.0, color: '#1E90FF', emoji: '🌱', description: 'Forgiving. Great for building the habit first.' },
+  hardcore: { label: 'Hardcore',   basePenalties: 0,   xpMultiplier: 3.0, color: '#FF4757', emoji: '🔥', description: 'Zero room for error. Miss once and it\'s over. (3.0x XP)' },
+  hard:     { label: 'Hard',       basePenalties: 2,   xpMultiplier: 2.0, color: '#FFA502', emoji: '⚡', description: '2 penalties per 30 days buffer. High discipline. (2.0x XP)' },
+  medium:   { label: 'Medium',     basePenalties: 5,   xpMultiplier: 1.5, color: '#2ED573', emoji: '💪', description: '5 penalties per 30 days buffer. Balanced pace. (1.5x XP)' },
+  easy:     { label: 'Easy',       basePenalties: 10,  xpMultiplier: 1.0, color: '#1E90FF', emoji: '🌱', description: '10 penalties per 30 days buffer. Build habit first. (1.0x XP)' },
+  relaxed:  { label: 'Track Only', basePenalties: 999, xpMultiplier: 0.0, color: '#A7A3C4', emoji: '☕', description: 'No penalties, no failing, no XP. Simple habit tracking.' },
 };
 
 export function calculateMaxPenalties(mode: DifficultyMode, durationDays: number): number {
+  if (mode === 'relaxed') return 999;
+  if (mode === 'hardcore') return 0;
   const base = DIFFICULTY_CONFIG[mode].basePenalties;
-  let allowed = Math.round(base * (durationDays / 90));
-  if (mode !== 'hardcore') {
-    allowed = Math.max(1, allowed);
-  }
-  return allowed;
+  let allowed = Math.round(base * (durationDays / 30));
+  return Math.max(1, allowed);
 }
 
 export interface ChallengeTask {
@@ -282,6 +282,9 @@ export async function incrementPenalty(
     const all = await getDemoChallenges();
     const index = all.findIndex((c) => c.id === challengeId);
     if (index >= 0) {
+      if (all[index].difficulty_mode === 'relaxed') {
+        return { newCount: 0, failed: false, error: null };
+      }
       all[index].penalties_used = (all[index].penalties_used || 0) + 1;
       const failed = all[index].penalties_used > all[index].max_penalties;
       if (failed) all[index].status = 'failed';
@@ -294,11 +297,15 @@ export async function incrementPenalty(
   // Supabase: read-increment-write
   const { data, error: readErr } = await supabase
     .from('challenges')
-    .select('penalties_used, max_penalties')
+    .select('penalties_used, max_penalties, difficulty_mode')
     .eq('id', challengeId)
     .single();
 
   if (readErr || !data) return { newCount: 0, failed: false, error: readErr?.message || 'Not found' };
+
+  if (data.difficulty_mode === 'relaxed') {
+    return { newCount: 0, failed: false, error: null };
+  }
 
   const newCount = (data.penalties_used || 0) + 1;
   const failed = newCount > data.max_penalties;

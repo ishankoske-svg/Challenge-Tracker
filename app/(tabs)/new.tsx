@@ -292,7 +292,7 @@ export default function NewChallengeScreen() {
         {/* Difficulty Mode Selector */}
         <Text style={[styles.label, { color: theme.textSecondary }]}>DIFFICULTY MODE & PENALTIES</Text>
         <View style={styles.difficultyGrid}>
-          {(['hardcore', 'hard', 'medium', 'easy'] as DifficultyMode[]).map((m) => {
+          {(['hardcore', 'hard', 'medium', 'easy', 'relaxed'] as DifficultyMode[]).map((m) => {
             const conf = DIFFICULTY_CONFIG[m];
             const isSelected = difficultyMode === m;
             const penaltiesAllowed = calculateMaxPenalties(m, parsedDuration);
@@ -316,10 +316,10 @@ export default function NewChallengeScreen() {
                 </View>
 
                 <Text style={[styles.diffSub, { color: theme.textSecondary }]}>
-                  {m === 'hardcore' ? '0 Penalties' : `${penaltiesAllowed} Penalties buffer`}
+                  {m === 'relaxed' ? 'No Penalties' : m === 'hardcore' ? '0 Penalties' : `${penaltiesAllowed} Penalties buffer`}
                 </Text>
                 <Text style={[styles.diffXp, { color: theme.accentText }]}>
-                  {conf.xpMultiplier}x XP
+                  {m === 'relaxed' ? '0x XP (Casual)' : `${conf.xpMultiplier}x XP`}
                 </Text>
               </TouchableOpacity>
             );

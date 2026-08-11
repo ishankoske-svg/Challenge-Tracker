@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Heart } from 'lucide-react-native';
+import { Heart, Coffee } from 'lucide-react-native';
 import { DifficultyMode, DIFFICULTY_CONFIG } from '../lib/challenges';
 import { useThemeStore } from '../stores/themeStore';
 
@@ -20,6 +20,28 @@ export function PenaltyIndicator({
   const { theme } = useThemeStore();
   const config = DIFFICULTY_CONFIG[difficultyMode] || DIFFICULTY_CONFIG.medium;
   const remaining = Math.max(0, maxPenalties - penaltiesUsed);
+
+  if (difficultyMode === 'relaxed') {
+    if (compact) {
+      return (
+        <View style={styles.compactRow}>
+          <Coffee color={theme.textMuted} size={14} />
+          <Text style={[styles.compactText, { color: theme.textMuted }]}>Track Only</Text>
+        </View>
+      );
+    }
+    return (
+      <View style={[styles.container, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+        <View style={styles.headerRow}>
+          <View style={[styles.modeChip, { backgroundColor: `${config.color}20`, borderColor: config.color }]}>
+            <Text style={styles.emoji}>{config.emoji}</Text>
+            <Text style={[styles.modeText, { color: config.color }]}>{config.label}</Text>
+          </View>
+          <Text style={[styles.counterText, { color: theme.textSecondary }]}>No Penalties (Habit Tracking)</Text>
+        </View>
+      </View>
+    );
+  }
 
   if (difficultyMode === 'hardcore') {
     return (
@@ -56,7 +78,7 @@ export function PenaltyIndicator({
       </View>
 
       <View style={styles.heartsRow}>
-        {Array.from({ length: maxPenalties }).map((_, i) => {
+        {Array.from({ length: Math.min(maxPenalties, 20) }).map((_, i) => {
           const isAlive = i < remaining;
           return (
             <View key={i} style={styles.heartWrapper}>
