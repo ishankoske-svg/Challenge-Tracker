@@ -227,17 +227,20 @@ export async function checkAndAwardBadges(
     const { challenges } = await fetchChallenges(userId);
     const curr = challenges.find(c => c.id === challengeId);
     
+    // Minimum 30 days rule for badge unlocking
+    if (!curr || curr.duration_days < 30) {
+      return [];
+    }
+
     // Day 1 check
     const { logs } = await fetchLogsForChallenge(challengeId, userId);
     if (logs.length >= 1) tryAward('first_step');
 
     // Domain task checks
-    if (curr) {
-      if (curr.domain_tag === 'fitness' || curr.category === 'fitness') tryAward('first_rep');
-      if (curr.domain_tag === 'coding' || curr.category === 'coding') tryAward('hello_world');
-      if (curr.domain_tag === 'learning' || curr.category === 'academics' || curr.category === 'language') tryAward('first_lesson');
-      if (curr.domain_tag === 'creative') tryAward('first_sketch');
-    }
+    if (curr.domain_tag === 'fitness' || curr.category === 'fitness') tryAward('first_rep');
+    if (curr.domain_tag === 'coding' || curr.category === 'coding') tryAward('hello_world');
+    if (curr.domain_tag === 'learning' || curr.category === 'academics' || curr.category === 'language') tryAward('first_lesson');
+    if (curr.domain_tag === 'creative') tryAward('first_sketch');
 
     const streak = await getStreakForChallenge(challengeId, userId);
     if (streak >= 7) tryAward('streak_7');
@@ -256,11 +259,14 @@ export async function checkAndAwardBadges(
   // Event 2: challenge_completed
   if (event === 'challenge_completed') {
     const { challenges } = await fetchChallenges(userId, 'completed');
-    if (challenges.length >= 1) tryAward('getting_started');
-    if (challenges.length >= 3) tryAward('repeat_achiever');
-    if (challenges.length >= 10) tryAward('habit_architect');
+    // Filter to challenges with minimum 30 days duration
+    const validChallenges = challenges.filter(c => c.duration_days >= 30);
 
-    for (const c of challenges) {
+    if (validChallenges.length >= 1) tryAward('getting_started');
+    if (validChallenges.length >= 3) tryAward('repeat_achiever');
+    if (validChallenges.length >= 10) tryAward('habit_architect');
+
+    for (const c of validChallenges) {
       if (c.difficulty_mode === 'medium') tryAward('medium_complete');
       if (c.difficulty_mode === 'hard') tryAward('hard_complete');
       if (c.difficulty_mode === 'hardcore' && c.duration_days >= 30) tryAward('hardcore_initiate');
