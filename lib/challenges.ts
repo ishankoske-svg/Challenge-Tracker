@@ -4,15 +4,37 @@ import { TaskTemplate } from '../constants/templates';
 
 const DEMO_CHALLENGES_KEY = '@challengr_demo_challenges';
 
+// ---------- TYPES ----------
+
 export type ChallengeCategory = 'fitness' | 'coding' | 'academics' | 'language' | 'mindset' | 'custom';
 export type ChallengeStatus = 'active' | 'completed' | 'failed' | 'paused';
+export type DifficultyMode = 'hardcore' | 'hard' | 'medium' | 'easy';
+
+export const DIFFICULTY_CONFIG: Record<DifficultyMode, { label: string; basePenalties: number; xpMultiplier: number; color: string; emoji: string; description: string }> = {
+  hardcore: { label: 'Hardcore', basePenalties: 0, xpMultiplier: 2.0, color: '#FF4757', emoji: '🔥', description: 'Zero room for error. Miss once and it\'s over.' },
+  hard:     { label: 'Hard',     basePenalties: 3, xpMultiplier: 1.5, color: '#FFA502', emoji: '⚡', description: 'Minimal slack. Builds serious discipline.' },
+  medium:   { label: 'Medium',   basePenalties: 7, xpMultiplier: 1.2, color: '#2ED573', emoji: '💪', description: 'Balanced. Allows for real-life bumps.' },
+  easy:     { label: 'Easy',     basePenalties: 15, xpMultiplier: 1.0, color: '#1E90FF', emoji: '🌱', description: 'Forgiving. Great for building the habit first.' },
+};
+
+export function calculateMaxPenalties(mode: DifficultyMode, durationDays: number): number {
+  const base = DIFFICULTY_CONFIG[mode].basePenalties;
+  let allowed = Math.round(base * (durationDays / 90));
+  if (mode !== 'hardcore') {
+    allowed = Math.max(1, allowed);
+  }
+  return allowed;
+}
 
 export interface ChallengeTask {
   id: string;
   challenge_id: string;
   label: string;
-  type: 'checkbox' | 'numeric' | 'photo' | 'text_note';
+  type: 'checkbox' | 'numeric' | 'photo' | 'text_note';  // controls UI rendering
+  task_type: 'definite' | 'binary';                        // controls scoring logic
+  target_quantity?: number | null;                          // required if task_type = 'definite'
   unit?: string;
+  is_compulsory: boolean;
   sort_order: number;
 }
 
@@ -26,6 +48,9 @@ export interface Challenge {
   start_date: string;
   end_date: string;
   status: ChallengeStatus;
+  difficulty_mode: DifficultyMode;
+  max_penalties: number;
+  penalties_used: number;
   template_id?: string;
   failure_reason?: string;
   created_at: string;
@@ -65,12 +90,14 @@ export async function createChallenge(
   durationDays: number,
   startDate: Date,
   tasks: TaskTemplate[],
+  difficultyMode: DifficultyMode = 'medium',
   templateId?: string,
 ): Promise<{ challenge: Challenge | null; error: string | null }> {
   const endDate = new Date(startDate);
   endDate.setDate(endDate.getDate() + durationDays - 1);
 
   const challengeId = generateId();
+  const maxPenalties = calculateMaxPenalties(difficultyMode, durationDays);
 
   const challenge: Challenge = {
     id: challengeId,
@@ -82,6 +109,9 @@ export async function createChallenge(
     start_date: formatDate(startDate),
     end_date: formatDate(endDate),
     status: 'active',
+    difficulty_mode: difficultyMode,
+    max_penalties: maxPenalties,
+    penalties_used: 0,
     template_id: templateId,
     created_at: new Date().toISOString(),
     tasks: tasks.map((t, i) => ({
@@ -89,7 +119,10 @@ export async function createChallenge(
       challenge_id: challengeId,
       label: t.label,
       type: t.type,
+      task_type: t.task_type || (t.type === 'numeric' ? 'definite' : 'binary'),
+      target_quantity: t.target_quantity ?? null,
       unit: t.unit,
+      is_compulsory: t.is_compulsory ?? true,
       sort_order: i,
     })),
   };
@@ -101,7 +134,6 @@ export async function createChallenge(
     return { challenge, error: null };
   }
 
-  // Supabase path
   const { error: challengeError } = await supabase.from('challenges').insert({
     id: challenge.id,
     user_id: userId,
@@ -112,6 +144,9 @@ export async function createChallenge(
     start_date: challenge.start_date,
     end_date: challenge.end_date,
     status: 'active',
+    difficulty_mode: difficultyMode,
+    max_penalties: maxPenalties,
+    penalties_used: 0,
     template_id: templateId || null,
   });
 
@@ -124,7 +159,10 @@ export async function createChallenge(
       challenge_id: challenge.id,
       label: t.label,
       type: t.type,
+      task_type: t.task_type || (t.type === 'numeric' ? 'definite' : 'binary'),
+      target_quantity: t.target_quantity ?? null,
       unit: t.unit || null,
+      is_compulsory: t.is_compulsory ?? true,
       sort_order: i,
     }));
     const { error: tasksError } = await supabase.from('challenge_tasks').insert(taskRows);
@@ -235,4 +273,40 @@ export async function updateChallengeStatus(
     .eq('id', challengeId);
 
   return { error: error?.message || null };
+}
+
+export async function incrementPenalty(
+  challengeId: string,
+): Promise<{ newCount: number; failed: boolean; error: string | null }> {
+  if (!isSupabaseConfigured()) {
+    const all = await getDemoChallenges();
+    const index = all.findIndex((c) => c.id === challengeId);
+    if (index >= 0) {
+      all[index].penalties_used = (all[index].penalties_used || 0) + 1;
+      const failed = all[index].penalties_used > all[index].max_penalties;
+      if (failed) all[index].status = 'failed';
+      await saveDemoChallenges(all);
+      return { newCount: all[index].penalties_used, failed, error: null };
+    }
+    return { newCount: 0, failed: false, error: 'Challenge not found' };
+  }
+
+  // Supabase: read-increment-write
+  const { data, error: readErr } = await supabase
+    .from('challenges')
+    .select('penalties_used, max_penalties')
+    .eq('id', challengeId)
+    .single();
+
+  if (readErr || !data) return { newCount: 0, failed: false, error: readErr?.message || 'Not found' };
+
+  const newCount = (data.penalties_used || 0) + 1;
+  const failed = newCount > data.max_penalties;
+
+  const updateData: Record<string, any> = { penalties_used: newCount };
+  if (failed) updateData.status = 'failed';
+
+  const { error } = await supabase.from('challenges').update(updateData).eq('id', challengeId);
+
+  return { newCount, failed, error: error?.message || null };
 }

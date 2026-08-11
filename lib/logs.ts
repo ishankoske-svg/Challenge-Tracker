@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ChallengeTask } from './challenges';
 
 const DEMO_LOGS_KEY = '@challengr_demo_logs';
 
@@ -8,9 +9,21 @@ export interface DailyLog {
   challenge_id: string;
   user_id: string;
   log_date: string;
+  day_number?: number;
   tasks_completed: Record<string, any>;
   notes: string;
+  compulsory_completion_pct: number;   // 0..100
+  optional_bonus_pct: number;          // 0..100
+  penalty_triggered: boolean;
+  missed_task_ids: string[];
   created_at: string;
+}
+
+export interface DayEvaluation {
+  compulsory_pct: number;
+  optional_pct: number;
+  penalty: boolean;
+  missedTaskIds: string[];
 }
 
 function generateId(): string {
@@ -19,6 +32,79 @@ function generateId(): string {
 
 function todayStr(): string {
   return new Date().toISOString().split('T')[0];
+}
+
+// ---------- COMPLETION EVALUATION ----------
+
+export function evaluateDayCompletion(
+  tasks: ChallengeTask[],
+  taskValues: Record<string, any>,
+): DayEvaluation {
+  const compulsoryTasks = tasks.filter(t => t.is_compulsory);
+  const optionalTasks = tasks.filter(t => !t.is_compulsory);
+
+  const scoreTask = (task: ChallengeTask): number => {
+    const val = taskValues[task.id];
+    if (task.task_type === 'definite') {
+      const target = task.target_quantity || 1;
+      if (val === undefined || val === null) return 0;
+      const numVal = typeof val === 'object' ? (val.value ?? 0) : Number(val);
+      return Math.min(numVal / target, 1);
+    } else {
+      // binary
+      if (val === true) return 1;
+      if (val && typeof val === 'object' && val.completed) return 1;
+      if (typeof val === 'string' && val.trim().length > 0) return 1; // text_note counts as done if filled
+      return 0;
+    }
+  };
+
+  let compulsorySum = 0;
+  let compulsoryCount = compulsoryTasks.length;
+  const missedTaskIds: string[] = [];
+
+  for (const task of compulsoryTasks) {
+    const score = scoreTask(task);
+    compulsorySum += score;
+    if (score < 1) missedTaskIds.push(task.id);
+  }
+
+  let optionalSum = 0;
+  let optionalCount = optionalTasks.length;
+  for (const task of optionalTasks) {
+    optionalSum += scoreTask(task);
+  }
+
+  const compulsory_pct = compulsoryCount > 0 ? Math.round((compulsorySum / compulsoryCount) * 100) : 100;
+  const optional_pct = optionalCount > 0 ? Math.round((optionalSum / optionalCount) * 100) : 0;
+  const penalty = compulsoryCount > 0 && compulsory_pct < 100;
+
+  return { compulsory_pct, optional_pct, penalty, missedTaskIds };
+}
+
+// ---------- GRACE WINDOW ----------
+
+export function isWithinGraceWindow(dateStr: string): boolean {
+  const now = new Date();
+  const today = todayStr();
+  if (dateStr === today) return true; // always allowed for today
+
+  // Allow logging yesterday until 6 AM today
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+  if (dateStr === yesterdayStr && now.getHours() < 6) {
+    return true;
+  }
+  return false;
+}
+
+export function getDayNumber(startDate: string, logDate: string): number {
+  const start = new Date(startDate);
+  const log = new Date(logDate);
+  const diffMs = log.getTime() - start.getTime();
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
 }
 
 // ---------- DEMO STORAGE ----------
@@ -84,6 +170,8 @@ export async function saveLog(
   userId: string,
   tasksCompleted: Record<string, any>,
   notes: string,
+  evaluation: DayEvaluation,
+  dayNumber?: number,
   date?: string,
 ): Promise<{ log: DailyLog | null; error: string | null }> {
   const logDate = date || todayStr();
@@ -94,30 +182,31 @@ export async function saveLog(
       (l) => l.challenge_id === challengeId && l.user_id === userId && l.log_date === logDate,
     );
 
+    const logData: DailyLog = {
+      id: existingIdx >= 0 ? all[existingIdx].id : generateId(),
+      challenge_id: challengeId,
+      user_id: userId,
+      log_date: logDate,
+      day_number: dayNumber,
+      tasks_completed: tasksCompleted,
+      notes,
+      compulsory_completion_pct: evaluation.compulsory_pct,
+      optional_bonus_pct: evaluation.optional_pct,
+      penalty_triggered: evaluation.penalty,
+      missed_task_ids: evaluation.missedTaskIds,
+      created_at: existingIdx >= 0 ? all[existingIdx].created_at : new Date().toISOString(),
+    };
+
     if (existingIdx >= 0) {
-      // Update existing log
-      all[existingIdx].tasks_completed = tasksCompleted;
-      all[existingIdx].notes = notes;
-      await saveDemoLogs(all);
-      return { log: all[existingIdx], error: null };
+      all[existingIdx] = logData;
     } else {
-      // Create new log
-      const newLog: DailyLog = {
-        id: generateId(),
-        challenge_id: challengeId,
-        user_id: userId,
-        log_date: logDate,
-        tasks_completed: tasksCompleted,
-        notes,
-        created_at: new Date().toISOString(),
-      };
-      all.push(newLog);
-      await saveDemoLogs(all);
-      return { log: newLog, error: null };
+      all.push(logData);
     }
+    await saveDemoLogs(all);
+    return { log: logData, error: null };
   }
 
-  // Supabase: upsert based on unique constraint (challenge_id, user_id, log_date)
+  // Supabase: upsert
   const { data, error } = await supabase
     .from('daily_logs')
     .upsert(
@@ -125,8 +214,13 @@ export async function saveLog(
         challenge_id: challengeId,
         user_id: userId,
         log_date: logDate,
+        day_number: dayNumber,
         tasks_completed: tasksCompleted,
         notes,
+        compulsory_completion_pct: evaluation.compulsory_pct,
+        optional_bonus_pct: evaluation.optional_pct,
+        penalty_triggered: evaluation.penalty,
+        missed_task_ids: evaluation.missedTaskIds,
       },
       { onConflict: 'challenge_id,user_id,log_date' },
     )
@@ -193,8 +287,7 @@ export async function getStreakForChallenge(
     if (logs.length === 0) return 0;
 
     let streak = 0;
-    const today = new Date();
-    const checkDate = new Date(today);
+    const checkDate = new Date();
 
     for (let i = 0; i < 365; i++) {
       const dateStr = checkDate.toISOString().split('T')[0];
@@ -209,7 +302,6 @@ export async function getStreakForChallenge(
     return streak;
   }
 
-  // For Supabase, fetch recent logs and compute streak
   const { data } = await supabase
     .from('daily_logs')
     .select('log_date')
