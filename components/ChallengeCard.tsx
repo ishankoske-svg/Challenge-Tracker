@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useThemeStore } from '../stores/themeStore';
 import { Challenge } from '../lib/challenges';
+import { PenaltyIndicator } from './PenaltyIndicator';
 import { Dumbbell, Code, BookOpen, Globe, Sparkles, ChevronRight, Calendar, CheckCircle2 } from 'lucide-react-native';
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
@@ -38,6 +39,10 @@ export function ChallengeCard({ challenge, onPress }: ChallengeCardProps) {
   const progressPercent = Math.round(progress * 100);
   const daysLeft = Math.max(0, totalDays - daysPassed);
 
+  const mode = challenge.difficulty_mode || 'medium';
+  const maxPenalties = challenge.max_penalties ?? 7;
+  const penaltiesUsed = challenge.penalties_used ?? 0;
+
   return (
     <TouchableOpacity
       style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
@@ -59,9 +64,7 @@ export function ChallengeCard({ challenge, onPress }: ChallengeCardProps) {
                 {challenge.status.charAt(0).toUpperCase() + challenge.status.slice(1)}
               </Text>
             </View>
-            <Text style={[styles.categoryTag, { color: theme.textMuted }]}>
-              {challenge.category}
-            </Text>
+            <PenaltyIndicator compact difficultyMode={mode} maxPenalties={maxPenalties} penaltiesUsed={penaltiesUsed} />
           </View>
         </View>
         <ChevronRight color={theme.textMuted} size={18} />
@@ -155,11 +158,6 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 11,
     fontWeight: '700',
-  },
-  categoryTag: {
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'capitalize',
   },
   progressSection: {
     marginBottom: 12,
