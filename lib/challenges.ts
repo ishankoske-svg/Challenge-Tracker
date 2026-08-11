@@ -7,6 +7,7 @@ const DEMO_CHALLENGES_KEY = '@challengr_demo_challenges';
 // ---------- TYPES ----------
 
 export type ChallengeCategory = 'fitness' | 'coding' | 'academics' | 'language' | 'mindset' | 'custom';
+export type ChallengeDomain = 'fitness' | 'coding' | 'learning' | 'creative' | 'other';
 export type ChallengeStatus = 'active' | 'completed' | 'failed' | 'paused';
 export type DifficultyMode = 'hardcore' | 'hard' | 'medium' | 'easy' | 'relaxed';
 
@@ -43,6 +44,7 @@ export interface Challenge {
   user_id: string;
   title: string;
   category: ChallengeCategory;
+  domain_tag?: ChallengeDomain;
   description: string;
   duration_days: number;
   start_date: string;
@@ -91,6 +93,7 @@ export async function createChallenge(
   startDate: Date,
   tasks: TaskTemplate[],
   difficultyMode: DifficultyMode = 'medium',
+  domainTag?: ChallengeDomain,
   templateId?: string,
 ): Promise<{ challenge: Challenge | null; error: string | null }> {
   const endDate = new Date(startDate);
@@ -98,12 +101,14 @@ export async function createChallenge(
 
   const challengeId = generateId();
   const maxPenalties = calculateMaxPenalties(difficultyMode, durationDays);
+  const inferredDomain: ChallengeDomain = domainTag || (category === 'fitness' ? 'fitness' : category === 'coding' ? 'coding' : (category === 'academics' || category === 'language') ? 'learning' : 'other');
 
   const challenge: Challenge = {
     id: challengeId,
     user_id: userId,
     title,
     category,
+    domain_tag: inferredDomain,
     description,
     duration_days: durationDays,
     start_date: formatDate(startDate),

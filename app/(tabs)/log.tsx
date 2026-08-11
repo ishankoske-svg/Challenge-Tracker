@@ -181,7 +181,8 @@ export default function LogScreen() {
       await updateChallengeStatus(selectedChallengeId, 'completed');
       const earned = await checkAndAwardBadges(userId, 'challenge_completed');
       if (earned.length > 0) {
-        Alert.alert('Challenge Completed & Badges Unlocked! 🎉', `Badges earned: ${earned.map(b => b.name).join(', ')}`);
+        const badgeDetails = earned.map(a => `${a.badge.name} (+${a.xpAwarded} XP${a.isFirstDomain ? ' [Domain Bonus]' : ''}${a.isFirstHardcore ? ' [Hardcore Bonus]' : ''})`).join('\n');
+        Alert.alert('Challenge Completed & Badges Unlocked! 🎉', `Badges earned:\n${badgeDetails}`);
       } else {
         Alert.alert('Challenge Completed! 🏆', 'Great job finishing the challenge!');
       }
@@ -199,7 +200,8 @@ export default function LogScreen() {
     } else {
       const earned = await checkAndAwardBadges(userId, 'log_saved', selectedChallengeId);
       if (earned.length > 0) {
-        Alert.alert('Badges Unlocked!', `You earned: ${earned.map(b => b.name).join(', ')}`);
+        const badgeDetails = earned.map(a => `${a.badge.name} (+${a.xpAwarded} XP${a.isFirstDomain ? ' [Domain Bonus]' : ''}${a.isFirstHardcore ? ' [Hardcore Bonus]' : ''})`).join('\n');
+        Alert.alert('Badges Unlocked! 🏅', `You earned:\n${badgeDetails}`);
       }
     }
 

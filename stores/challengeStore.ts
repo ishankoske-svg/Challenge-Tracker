@@ -3,6 +3,7 @@ import {
   Challenge,
   ChallengeStatus,
   DifficultyMode,
+  ChallengeDomain,
   fetchChallenges,
   createChallenge as createChallengeApi,
   deleteChallenge as deleteChallengeApi,
@@ -27,6 +28,7 @@ interface ChallengeState {
     startDate: Date,
     tasks: TaskTemplate[],
     difficultyMode: DifficultyMode,
+    domainTag?: ChallengeDomain,
     templateId?: string,
   ) => Promise<{ success: boolean; error?: string }>;
   removeChallenge: (challengeId: string) => Promise<void>;
@@ -62,10 +64,10 @@ export const useChallengeStore = create<ChallengeState>((set, get) => ({
     set({ challenges: updatedChallenges, activeChallenges: active, isLoading: false, error });
   },
 
-  addChallenge: async (userId, title, category, description, durationDays, startDate, tasks, difficultyMode, templateId) => {
+  addChallenge: async (userId, title, category, description, durationDays, startDate, tasks, difficultyMode, domainTag, templateId) => {
     set({ isLoading: true, error: null });
     const { challenge, error } = await createChallengeApi(
-      userId, title, category, description, durationDays, startDate, tasks, difficultyMode, templateId,
+      userId, title, category, description, durationDays, startDate, tasks, difficultyMode, domainTag, templateId,
     );
     if (error || !challenge) {
       set({ isLoading: false, error: error || 'Unknown error' });

@@ -4,9 +4,9 @@ import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../stores/authStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { ThemeSwitcher } from '../../components/ThemeSwitcher';
-import { User, LogOut, ShieldCheck, Palette, Target, CheckCircle2, XCircle } from 'lucide-react-native';
+import { User, LogOut, ShieldCheck, Palette, Target, CheckCircle2, XCircle, Award, Flame, Zap } from 'lucide-react-native';
 import { BadgeGrid } from '../../components/BadgeGrid';
-import { fetchUserBadges, ALL_BADGES } from '../../lib/badges';
+import { fetchUserBadges, ALL_BADGES, getUserXPAndLevel } from '../../lib/badges';
 import { fetchChallenges, Challenge } from '../../lib/challenges';
 import { FailureInsights } from '../../components/FailureInsights';
 
@@ -18,6 +18,12 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [earnedKeys, setEarnedKeys] = useState<string[]>([]);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [xpData, setXpData] = useState<{ totalXP: number; level: number; levelTitle: string; xpNextLevel: number }>({
+    totalXP: 0,
+    level: 1,
+    levelTitle: 'Novice',
+    xpNextLevel: 100,
+  });
 
   const displayName = user?.display_name || user?.email?.split('@')[0] || 'Challenger';
   const email = user?.email || 'user@challengr.app';
@@ -29,14 +35,16 @@ export default function ProfileScreen() {
   const loadData = async () => {
     if (!user) return;
     setLoading(true);
-    const [{ earnedBadges }, { challenges: fetchedChallenges }] = await Promise.all([
+    const [{ earnedBadges }, { challenges: fetchedChallenges }, userXp] = await Promise.all([
       fetchUserBadges(user.id),
-      fetchChallenges(user.id)
+      fetchChallenges(user.id),
+      getUserXPAndLevel(user.id),
     ]);
     
     const keys = earnedBadges.map(ub => ALL_BADGES.find(b => b.id === ub.badge_id)?.key).filter(Boolean) as string[];
     setEarnedKeys(keys);
     setChallenges(fetchedChallenges);
+    setXpData(userXp);
     setLoading(false);
   };
 
@@ -58,7 +66,7 @@ export default function ProfileScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {/* User Badge Card */}
+        {/* User Card */}
         <View style={[styles.userCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
           <View style={[styles.avatarCircle, { backgroundColor: theme.accentBg, borderColor: theme.accentBorder }]}>
             <Text style={[styles.avatarText, { color: theme.accentText }]}>
@@ -84,11 +92,43 @@ export default function ProfileScreen() {
            <ActivityIndicator size="large" color={theme.accent} style={{ marginVertical: 30 }} />
         ) : (
           <>
+            {/* Level & XP Card */}
+            <View style={[styles.xpCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+              <View style={styles.xpHeader}>
+                <View style={styles.levelBadge}>
+                  <Zap color={theme.accent} size={16} />
+                  <Text style={[styles.levelText, { color: theme.textPrimary }]}>
+                    Level {xpData.level} — {xpData.levelTitle}
+                  </Text>
+                </View>
+                <Text style={[styles.xpTotalText, { color: theme.accentText }]}>
+                  {xpData.totalXP} XP
+                </Text>
+              </View>
+
+              <View style={styles.xpTrackContainer}>
+                <View style={[styles.xpTrack, { backgroundColor: theme.inputBg }]}>
+                  <View
+                    style={[
+                      styles.xpFill,
+                      { width: `${Math.min(100, Math.max(10, 100 - (xpData.xpNextLevel / (xpData.xpNextLevel + 50)) * 100))}%`, backgroundColor: theme.accent },
+                    ]}
+                  />
+                </View>
+                <Text style={[styles.xpNextText, { color: theme.textSecondary }]}>
+                  {xpData.xpNextLevel} XP to Level {xpData.level + 1}
+                </Text>
+              </View>
+            </View>
+
             {/* Badges Section */}
             <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Badges & Rewards</Text>
+              <View style={styles.sectionHeaderRow}>
+                <Award color={theme.accent} size={18} />
+                <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Badges & Rewards</Text>
+              </View>
               <Text style={[styles.sectionSub, { color: theme.textSecondary, marginBottom: 16 }]}>
-                {earnedKeys.length} / {ALL_BADGES.length} Badges Earned
+                {earnedKeys.length} / {ALL_BADGES.length} Badges Unlocked
               </Text>
               <BadgeGrid earnedKeys={earnedKeys} />
             </View>
@@ -119,7 +159,7 @@ export default function ProfileScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.historyTitle, { color: theme.textPrimary }]}>{c.title}</Text>
                         <Text style={[styles.historyDetails, { color: theme.textSecondary }]}>
-                          {c.duration_days} days • {c.category}
+                          {c.duration_days} days • {c.domain_tag || c.category} • {c.difficulty_mode || 'medium'}
                         </Text>
                         {c.status === 'failed' && c.failure_reason ? (
                           <Text style={[styles.failureReasonText, { color: theme.textMuted }]} numberOfLines={2}>
@@ -159,7 +199,7 @@ const styles = StyleSheet.create({
   titleGroup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   screenTitle: { fontSize: 20, fontWeight: '800' },
   content: { padding: 20 },
-  userCard: { borderRadius: 20, padding: 24, alignItems: 'center', borderWidth: 1, marginBottom: 20 },
+  userCard: { borderRadius: 20, padding: 24, alignItems: 'center', borderWidth: 1, marginBottom: 16 },
   avatarCircle: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', borderWidth: 2, marginBottom: 12 },
   avatarText: { fontSize: 28, fontWeight: '800' },
   userName: { fontSize: 22, fontWeight: '800', marginBottom: 4 },
@@ -167,8 +207,18 @@ const styles = StyleSheet.create({
   tagRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   tag: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
   tagText: { fontSize: 12, fontWeight: '700' },
+  xpCard: { borderRadius: 20, padding: 18, borderWidth: 1, marginBottom: 20 },
+  xpHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  levelBadge: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  levelText: { fontSize: 16, fontWeight: '800' },
+  xpTotalText: { fontSize: 16, fontWeight: '800' },
+  xpTrackContainer: {},
+  xpTrack: { height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 6 },
+  xpFill: { height: 8, borderRadius: 4 },
+  xpNextText: { fontSize: 11, fontWeight: '600', textAlign: 'right' },
   sectionCard: { borderRadius: 20, padding: 20, borderWidth: 1, marginBottom: 24 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 6 },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  sectionTitle: { fontSize: 16, fontWeight: '700' },
   sectionSub: { fontSize: 13, lineHeight: 18 },
   historyRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   historyIcon: { width: 24, alignItems: 'center' },

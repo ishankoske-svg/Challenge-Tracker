@@ -16,7 +16,7 @@ import { useChallengeStore } from '../../stores/challengeStore';
 import { ThemeSwitcher } from '../../components/ThemeSwitcher';
 import { TemplateCard } from '../../components/TemplateCard';
 import { TEMPLATES, ChallengeTemplate, TaskTemplate } from '../../constants/templates';
-import { ChallengeCategory, DifficultyMode, DIFFICULTY_CONFIG, calculateMaxPenalties } from '../../lib/challenges';
+import { ChallengeCategory, ChallengeDomain, DifficultyMode, DIFFICULTY_CONFIG, calculateMaxPenalties } from '../../lib/challenges';
 import {
   PlusCircle,
   ArrowLeft,
@@ -49,6 +49,14 @@ const CATEGORY_OPTIONS: { value: ChallengeCategory; label: string }[] = [
   { value: 'custom', label: 'Custom' },
 ];
 
+const DOMAIN_OPTIONS: { value: ChallengeDomain; label: string }[] = [
+  { value: 'fitness', label: '🏋️ Fitness' },
+  { value: 'coding', label: '💻 Coding' },
+  { value: 'learning', label: '📚 Learning' },
+  { value: 'creative', label: '🎨 Creative' },
+  { value: 'other', label: '✨ Other' },
+];
+
 export default function NewChallengeScreen() {
   const router = useRouter();
   const { theme } = useThemeStore();
@@ -61,6 +69,7 @@ export default function NewChallengeScreen() {
   // Form state
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<ChallengeCategory>('custom');
+  const [domainTag, setDomainTag] = useState<ChallengeDomain>('other');
   const [description, setDescription] = useState('');
   const [durationDays, setDurationDays] = useState('30');
   const [difficultyMode, setDifficultyMode] = useState<DifficultyMode>('medium');
@@ -169,6 +178,7 @@ export default function NewChallengeScreen() {
       new Date(),
       validTasks,
       difficultyMode,
+      domainTag,
       selectedTemplateId,
     );
 
@@ -277,11 +287,42 @@ export default function NewChallengeScreen() {
                   },
                 ]}
                 activeOpacity={0.8}
-                onPress={() => setCategory(opt.value)}
+                onPress={() => {
+                  setCategory(opt.value);
+                  if (opt.value === 'fitness') setDomainTag('fitness');
+                  else if (opt.value === 'coding') setDomainTag('coding');
+                  else if (opt.value === 'academics' || opt.value === 'language') setDomainTag('learning');
+                }}
               >
                 <Text
                   style={[styles.chipText, { color: isActive ? '#FFF' : theme.textSecondary }]}
                 >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Domain Tag Picker for Badges */}
+        <Text style={[styles.label, { color: theme.textSecondary }]}>BADGE TRACK DOMAIN</Text>
+        <View style={styles.chipRow}>
+          {DOMAIN_OPTIONS.map((opt) => {
+            const isActive = domainTag === opt.value;
+            return (
+              <TouchableOpacity
+                key={opt.value}
+                style={[
+                  styles.chip,
+                  {
+                    backgroundColor: isActive ? theme.accent : theme.inputBg,
+                    borderColor: isActive ? theme.accent : theme.inputBorder,
+                  },
+                ]}
+                activeOpacity={0.8}
+                onPress={() => setDomainTag(opt.value)}
+              >
+                <Text style={[styles.chipText, { color: isActive ? '#FFF' : theme.textSecondary }]}>
                   {opt.label}
                 </Text>
               </TouchableOpacity>
