@@ -4,32 +4,31 @@ Challengr is a cross-platform personal challenge tracker built with **React Nati
 
 ---
 
-## Part 1: Completed Baseline Phases (Preserved & Active)
+## Part 1: Completed Baseline & Phase 1 Core Mechanics
 
-### Phase 1: Foundation & Authentication
-- Supabase Auth integration (email/password login & sign-up).
-- Demo Mode fallback using `AsyncStorage`.
+### 1.1 Foundation & Infrastructure (Completed)
+- Supabase Auth integration & Demo Mode fallback using `AsyncStorage`.
 - Global authentication state with Zustand (`useAuthStore`).
+- Theme switcher with 3 curated themes (`midnight`, `forest`, `ember`).
 
-### Phase 2: Core Data Engine & Challenge Creator
-- Multi-step challenge wizard with template selector (`75 Hard`, `100 Days of Code`, `30-Day Language Sprint`, `30-Day Reading`).
-- Custom challenge builder with dynamic tasks (checkbox, numeric, photo, text note).
-- Active challenge store (`useChallengeStore`).
+### 1.2 Core Data Model (Definite vs Binary & Compulsory Pools) (Completed)
+- Every task is typed as either `definite` (numeric target, e.g. "5 DSA problems") or `binary` (done/not-done).
+- Tasks are flagged as `is_compulsory: boolean` (Core tasks impact penalties; Bonus tasks feed separate bonus score).
+- Dual completion meter rendering: **Core: XX% · Bonus: YY%**.
 
-### Phase 3: Daily Logging & Progress Tracking
-- Interactive daily task logging screen (`log.tsx`).
-- Photo attachments with `expo-image-picker`.
-- Streak calculation & daily task completion state.
-
-### Phase 4: Data Visualization & AI Insights
-- Victory Native interactive completion bar charts & trend lines.
-- AI progress summary generator (`lib/ai.ts`).
-
-### Phase 5: Rewards, History & Failure Analytics
-- Event-driven badge engine (`lib/badges.ts`) & visual `<BadgeGrid />`.
-- Full challenge history list (Active, Completed, Failed).
-- Give Up feedback flow with reason text input.
-- Keyword-based failure analytics (`<FailureInsights />`) with percentage category breakdown.
+### 1.3 Difficulty Modes & Penalty Hearts System (Completed)
+- **5 Difficulty Modes**:
+  - 🔥 **Hardcore**: 0 penalties allowed (3.0x XP)
+  - ⚡ **Hard**: 2 penalties per 30 days (2.0x XP)
+  - 💪 **Medium**: 5 penalties per 30 days (1.5x XP)
+  - 🌱 **Easy**: 10 penalties per 30 days (1.0x XP)
+  - ☕ **Track Only (Relaxed)**: Unlimited penalties, no auto-fail, no XP (0.0x XP)
+- **Automatic Scaling**: `calculateMaxPenalties(mode, durationDays)` scaled to 30-day baseline.
+- **Penalty Engine & Unlogged Day Reconciliation**:
+  - Missing core tasks on a day consumes 1 penalty heart.
+  - Automatically reconciles unlogged past days after 6:00 AM grace period cutoff.
+  - Auto-fails challenge when remaining penalty hearts reach 0.
+- **UI Components**: Persistent `<PenaltyIndicator />` hearts counter on Challenge Cards, Daily Log, and Stats screen.
 
 ---
 
@@ -38,202 +37,137 @@ Challengr is a cross-platform personal challenge tracker built with **React Nati
 ### 1. Core Data Model Changes
 
 #### 1.1 Task Types
-
-Every task within a challenge is one of two types:
-
 | Type | Description | Example |
 |---|---|---|
 | `definite` | Has a numeric daily target. Progress is logged as a quantity. | "Solve 5 DSA problems" |
 | `binary` | Simple done/not-done. No quantity. | "Do skincare" |
 
-**Task fields:**
+#### 1.2 Challenge Table Additions
 ```ts
-interface ChallengeTask {
-  id: string;
-  challenge_id: string;
-  label: string;
-  type: 'checkbox' | 'numeric' | 'photo' | 'text_note';
-  task_type: 'definite' | 'binary';
-  target_quantity?: number | null; // required if task_type = definite
-  unit?: string | null;           // e.g. "problems", "pages", "kg"
-  is_compulsory: boolean;        // default true
-  sort_order: number;
-  created_at: string;
-}
-```
-
-#### 1.2 Daily Log Entries
-
-```ts
-interface DailyLogEntry {
-  task_id: string;
-  completed_quantity: number | null; // for definite tasks
-  is_done: boolean;                  // for binary tasks
-}
-
-interface DailyLog {
-  id: string;
-  challenge_id: string;
-  user_id: string;
-  day_number?: number;
-  log_date: string;                  // YYYY-MM-DD
-  tasks_completed: Record<string, any>;
-  compulsory_completion_pct: number; // 0..100
-  optional_bonus_pct: number;        // 0..100
-  penalty_triggered: boolean;
-  missed_task_ids: string[];
-  notes?: string | null;
-  created_at: string;
-}
-```
-
-#### 1.3 Completion % Formula
-
-Per day, per task:
-- Definite: `task_score = min(completed_quantity / target_quantity, 1.0)`
-- Binary: `task_score = is_done ? 1.0 : 0.0`
-
-Pool calculation (compulsory vs optional):
-```ts
-compulsory_completion_pct = avg(task_score for all compulsory tasks that day) * 100
-optional_bonus_pct        = avg(task_score for all optional tasks that day) * 100
-```
-Display format: "Core: 80% · Bonus: 60%". Optional tasks feed a separate bonus consistency score and never factor into penalties or main streaks.
-
-#### 1.4 Challenge Table Schema
-
-```ts
-type DifficultyMode = 'hardcore' | 'hard' | 'medium' | 'easy';
+type ChallengeDomain = 'fitness' | 'coding' | 'learning' | 'creative' | 'other';
 
 interface Challenge {
-  id: string;
-  user_id: string;
-  title: string;
-  category: 'fitness' | 'coding' | 'academics' | 'language' | 'mindset' | 'custom';
-  description: string;
-  duration_days: number;
-  start_date: string;
-  end_date: string;
-  status: 'active' | 'completed' | 'failed' | 'paused';
+  ...existing fields...
+  domain_tag: ChallengeDomain;
   difficulty_mode: DifficultyMode;
-  max_penalties: number;           // computed at creation
-  penalties_used: number;          // default 0
-  template_id?: string | null;
-  failure_reason?: string | null;
-  created_at: string;
-  tasks?: ChallengeTask[];
+  max_penalties: number;
+  penalties_used: number;
 }
 ```
 
 ---
 
-### 2. Difficulty Modes & Penalty System
+### 2. Gamification — Badge & XP Engine
 
-#### 2.1 Base Penalty Allowance (30-Day Baseline)
+#### 2.1 Difficulty Multipliers & Base XP
+- **Easy**: `1.0x XP`
+- **Medium**: `1.5x XP`
+- **Hard**: `2.0x XP`
+- **Hardcore**: `3.0x XP`
+- **Track Only**: `0.0x XP`
 
-| Mode | Penalties Allowed (30 Days) | XP Multiplier | Description |
-|---|---|---|---|
-| `hardcore` | 0 | 3.0x | Zero room for error. Miss once and it's over. |
-| `hard` | 2 | 2.0x | 2 penalties per 30 days buffer. High discipline. |
-| `medium` | 5 | 1.5x | 5 penalties per 30 days buffer. Balanced pace. |
-| `easy` | 10 | 1.0x | 10 penalties per 30 days buffer. Build habit first. |
-| `relaxed` | Unlimited | 0.0x | Track Only mode. No penalties, no failing, no XP. |
+#### 2.2 Badge Tiers & Base XP
+Each badge has a `difficulty_tier` 1–5:
+| Tier | Base XP |
+|---|---|
+| 1 | 50 XP |
+| 2 | 150 XP |
+| 3 | 400 XP |
+| 4 | 900 XP |
+| 5 | 2000 XP |
 
-#### 2.2 Scaling Formula
+- **Hardcore Multiplier**: Badges flagged `is_hardcore_exclusive` get a `1.5x` base XP multiplier.
 
-For a challenge of length `N` days:
+#### 2.3 First in Domain & Hardcore Stacking Bonuses
+- First badge earned in a domain (`fitness`, `coding`, `learning`, `creative`, `other`, `consistency`, `difficulty`, `milestone`, `social`): **+100 XP Bonus**.
+- First Hardcore badge earned ever: **+300 XP Bonus**.
+- **Stacking Formula**:
 ```ts
-allowed_penalties = Math.round(base_penalties * (N / 30));
-if (mode === 'relaxed') return 999; // No penalties
-```
-// Floor rule: Hard/Medium/Easy always get at least 1 buffer,
-// even on short challenges, so they stay distinct from Hardcore.
-if (mode !== 'hardcore') {
-  allowed_penalties = Math.max(1, allowed_penalties);
-}
-
-#### 2.3 Penalty Trigger Rule (Day-Level)
-
-Missing any compulsory task on a given day = 1 penalty for that day (capped at 1 per day).
-
-```ts
-if (compulsory_completion_pct < 100) {
-  day.penalty_triggered = true;
-  day.missed_task_ids = incompleteCompulsoryTaskIds;
-  challenge.penalties_used += 1;
-}
-
-if (challenge.penalties_used > challenge.max_penalties) {
-  challenge.status = 'failed';
-}
+total_xp_awarded = Math.round(base_xp * (is_hardcore_exclusive ? 1.5 : 1.0))
+                  + (isFirstInDomain ? 100 : 0)
+                  + (isFirstHardcore ? 300 : 0);
 ```
 
-#### 2.4 Grace Window
+#### 2.4 Complete Badge Catalog
 
-Allow logging/editing the previous day up until 6:00 AM the next day before log evaluation is locked in as final.
+##### Consistency
+- T1 **First Step** — Complete Day 1 of any challenge
+- T1 **Week One** — 7-day streak
+- T2 **Fortnight Strong** — 14-day streak
+- T2 **Halfway There** — Reach midpoint of any challenge at 80%+ avg completion
+- T3 **Iron Habit** — 30-day streak
+- T3 **Comeback Kid** — Recover full streak after using a penalty
+- T4 **Consistency King/Queen** — Finish a challenge with 90%+ avg completion
+- T5 **Unbroken** — Complete a 90+ day challenge with 0 penalties used
 
-#### 2.5 UI Requirements
-- Persistent "penalties remaining" indicator (❤️ heart/life style) visible on Challenge Card, Log Screen, and Stats Screen.
-- When a penalty is used, show a toast/modal: which task(s) caused it, and penalties remaining.
-- Prominently warn user when down to their last penalty.
+##### Difficulty
+- T2 **Stepping It Up** — Complete a challenge on Medium mode
+- T3 **No Excuses** — Complete a challenge on Hard mode
+- T4 **Hardcore Initiate** [hardcore-exclusive] — Complete a 30+ day Hardcore challenge
+- T5 **Zero Penalties, Zero Regrets** [hardcore-exclusive] — Complete a 90-day Hardcore challenge
+- T5 **Mode Master** — Complete at least one challenge in every difficulty mode
+
+##### Domain: Fitness
+- T1 **First Rep** — First fitness-tagged task completion
+- T2 **Gains Log** — Complete a 30-day fitness challenge
+- T3 **Transformation** — Complete a 90-day fitness challenge at 85%+ completion
+- T4 **Beast Mode** [hardcore-exclusive] — Complete a 90-day Hardcore fitness challenge
+
+##### Domain: Coding
+- T1 **Hello World** — First coding task completion
+- T2 **Problem Solver** — 100+ total problems logged across a challenge
+- T3 **Grinder** — Complete a 60+ day coding challenge at 85%+ completion
+- T4 **Algorithm Master** [hardcore-exclusive] — Complete a 90-day Hardcore coding challenge
+
+##### Domain: Learning
+- T1 **First Lesson** — First learning task completion
+- T2 **Steady Study** — 21-day streak on a learning challenge
+- T3 **Deep Focus** — Complete a 60+ day learning challenge at 85%+ completion
+
+##### Domain: Creative
+- T1 **First Sketch** — First creative task completion
+- T2 **Creative Flow** — 14-day streak on a creative challenge
+- T3 **Portfolio Builder** — Complete a 60+ day creative challenge
+
+##### Milestone
+- T1 **Getting Started** — Complete first challenge
+- T2 **Repeat Achiever** — Complete 3 challenges total
+- T3 **Habit Architect** — Complete 10 challenges total
+- T3 **Photo Diary** — Upload progress photos on 30 distinct days
+- T4 **The Long Game** — Accumulate 365 total logged days
+
+##### Social
+- T1 **Not Alone** — Join or create an accountability pod
+- T2 **Trailblazer** — Have your template forked by another user
+- T3 **Community Pillar** — Template forked 10+ times
 
 ---
 
 ### 3. Trajectory Engine (Prediction Feature)
-
-- **Inputs**: `compulsory_completion_pct`, `optional_bonus_pct`, task quantity history, `penalties_used`, rolling 14-day consistency.
-- **Trend Fitting**: Diminishing-returns curve `y = a - b * exp(-c * day)` fitted via least-squares.
-- **Output Card**: "At your current pace, you'll be solving ~9 DSA problems/day and averaging 87% consistency by Day 100."
-- **Interactive Slider**: "What Changes the Projection" consistency slider (drag 80% → 95% to see updated projection live).
+- **Curve fitting**: `y = a - b * exp(-c * day)`
+- Projection card UI + interactive consistency slider.
 
 ---
 
-### 4. Gamification
-
-- **Streak freeze / penalty shield**: Earned after 7 consecutive days at 100% compulsory completion. Can be manually applied to cancel a pending penalty.
-- **XP + Level system**: Global across all challenges. XP awarded per completed day, weighted by difficulty.
-- **Badges**: Event-driven rewards (`first_win`, `streak_7`, `streak_30`, `days_100`, category starters, `iron_will`, `comeback_kid`, `consistency_king`).
-
----
-
-### 5. Social / Accountability
-
-- **Accountability pods**: Groups of 2–4 users showing daily completion %.
-- **Public challenge feed (opt-in)**: "Day X/90" shareable cards.
-- **Forkable challenge templates**: Publish custom challenge presets for others to clone.
-
----
-
-### 6. Analytics & Insight
-
-- **Weekly recap card**: Auto-generated shareable image card.
-- **Task-level breakdown**: Definite vs Binary completion comparison.
-- **Failure Analytics**: Categorized failure reasons (Motivation, Time, Health, Difficulty, Life Events, Consistency).
-
----
-
-### 7. Flexibility / Life-Proofing
-
-- **Pause/vacation mode**: Freeze challenge for up to 3 days (no penalties, excluded from trend fitting).
-- **Mid-challenge task editing**: Capped adjustments to definite task target quantities.
-
----
-
-### 8. Progress Photo Features (Scrubber + Gallery)
-
-- **Gallery View**: Camera-roll grid layout with tap-to-compare side-by-side view.
+### 4. Progress Photo Features (Scrubber & Gallery)
+- **Gallery View**: Grid + tap-to-compare side-by-side view.
 - **Sequence View**: Interactive day-by-day scrubber + timelapse video export (~2-4 fps).
 
 ---
 
-## Part 3: Phased Roadmap
+### 5. Flexibility & Life-Proofing
+- **Pause / Vacation Mode**: Freeze challenge for up to 3 days.
+- **Mid-challenge task editing**: Capped adjustments to target quantities.
 
-- `[x]` **Phase 1-5 Baseline**: Auth, Themes, Templates, AI Insights, Badges, Failure Analytics (Preserved).
-- `[ ]` **Phase 1 (New)**: Core Mechanics (Definite/Binary, Compulsory flag, Difficulty modes, Penalty Hearts UI).
-- `[ ]` **Phase 1.5 (New)**: Progress Photo Views (Gallery Grid & Scrubber).
-- `[ ]` **Phase 2 (New)**: Trajectory Engine (Trend fitting & interactive slider).
-- `[ ]` **Phase 3 (New)**: Gamification (XP/Levels, Shields, Badges).
-- `[ ]` **Phase 4 (New)**: Flexibility (Pause mode & target editing).
-- `[ ]` **Phase 5 (New)**: Analytics (Weekly recaps & time-of-day breakdown).
-- `[ ]` **Phase 6 (New)**: Social (Pods & Public Feed).
-- `[ ]` **Phase 7 (New)**: AI Layer (Adaptive difficulty & personalized nudges).
+---
+
+## Part 3: Roadmap
+
+- `[x]` **Phase 1**: Core Mechanics (Definite/Binary tasks, 30-day Penalty Baseline, Heart Lives UI, Auto-Penalties)
+- `[ ]` **Phase 3**: Gamification Engine (Expanded Badge Catalog, Domain Tags, Tiered XP & Bonus Stacking, Level System)
+- `[ ]` **Phase 1.5**: Progress Photo Scrubber & Gallery Grid
+- `[ ]` **Phase 2**: Trajectory Engine & Interactive Projection Slider
+- `[ ]` **Phase 4**: Flexibility (Pause Mode & Mid-Challenge Target Edits)
+- `[ ]` **Phase 5**: Analytics & Content (Weekly Recaps & Time-of-day breakdowns)
+- `[ ]` **Phase 6**: Social (Pods & Public Feed)
+- `[ ]` **Phase 7**: AI Layer (Adaptive Difficulty & Smart Nudges)
