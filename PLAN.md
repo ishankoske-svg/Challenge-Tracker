@@ -129,27 +129,28 @@ interface Challenge {
 
 ### 2. Difficulty Modes & Penalty System
 
-#### 2.1 Base Penalty Allowance (90-Day Baseline)
+#### 2.1 Base Penalty Allowance (30-Day Baseline)
 
-| Mode | Penalties Allowed (90 Days) | XP Multiplier | Description |
+| Mode | Penalties Allowed (30 Days) | XP Multiplier | Description |
 |---|---|---|---|
-| `hardcore` | 0 | 2.0x | Zero room for error. Miss once and it's over. |
-| `hard` | 3 | 1.5x | Minimal slack. Builds serious discipline. |
-| `medium` | 7 | 1.2x | Balanced. Allows for real-life bumps. |
-| `easy` | 15 | 1.0x | Forgiving. Great for building the habit first. |
+| `hardcore` | 0 | 3.0x | Zero room for error. Miss once and it's over. |
+| `hard` | 2 | 2.0x | 2 penalties per 30 days buffer. High discipline. |
+| `medium` | 5 | 1.5x | 5 penalties per 30 days buffer. Balanced pace. |
+| `easy` | 10 | 1.0x | 10 penalties per 30 days buffer. Build habit first. |
+| `relaxed` | Unlimited | 0.0x | Track Only mode. No penalties, no failing, no XP. |
 
 #### 2.2 Scaling Formula
 
 For a challenge of length `N` days:
 ```ts
-allowed_penalties = Math.round(base_penalties * (N / 90));
-
+allowed_penalties = Math.round(base_penalties * (N / 30));
+if (mode === 'relaxed') return 999; // No penalties
+```
 // Floor rule: Hard/Medium/Easy always get at least 1 buffer,
 // even on short challenges, so they stay distinct from Hardcore.
 if (mode !== 'hardcore') {
   allowed_penalties = Math.max(1, allowed_penalties);
 }
-```
 
 #### 2.3 Penalty Trigger Rule (Day-Level)
 
