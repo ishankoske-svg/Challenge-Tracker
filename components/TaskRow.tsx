@@ -5,14 +5,13 @@ import { ChallengeTask } from '../lib/challenges';
 import * as ImagePicker from 'expo-image-picker';
 import {
   CheckCircle2,
-  Circle,
-  Hash,
-  Camera,
   Upload,
   Trash2,
   Maximize2,
   X,
   Crop,
+  Shield,
+  Sparkles,
 } from 'lucide-react-native';
 
 interface TaskRowProps {
@@ -104,34 +103,69 @@ export function TaskRow({
     return { height: 240 };
   };
 
+  // Definite vs Binary Progress calculation
+  const targetQty = task.target_quantity || (task.type === 'numeric' ? 1 : null);
+  const isDefinite = task.task_type === 'definite' || (task.type === 'numeric' && task.target_quantity);
+  const currentNumVal = Number(normalizedValue.value) || 0;
+  const isDoneDefinite = targetQty ? currentNumVal >= targetQty : false;
+  const isTaskCompleted = isDefinite ? isDoneDefinite : normalizedValue.completed;
+
+  const isCompulsory = task.is_compulsory ?? true;
+
   return (
-    <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-      {/* Universal Task Header (Checkbox + Label) */}
+    <View style={[styles.card, { backgroundColor: theme.card, borderColor: isTaskCompleted ? theme.accentBorder : theme.cardBorder }]}>
+      {/* Task Header (Checkbox/Toggle + Label + Compulsory/Optional Tag) */}
       <View style={styles.header}>
         <TouchableOpacity
           style={[
             styles.headerCheckbox,
             { 
-              backgroundColor: normalizedValue.completed ? theme.accent : theme.inputBg,
-              borderColor: normalizedValue.completed ? theme.accent : theme.inputBorder 
+              backgroundColor: isTaskCompleted ? theme.accent : theme.inputBg,
+              borderColor: isTaskCompleted ? theme.accent : theme.inputBorder 
             }
           ]}
           activeOpacity={0.8}
           onPress={() => onChangeValue(task.id, { ...normalizedValue, completed: !normalizedValue.completed })}
         >
-          {normalizedValue.completed ? (
+          {isTaskCompleted ? (
             <CheckCircle2 color="#FFF" size={18} />
           ) : (
             <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: theme.textMuted }} />
           )}
         </TouchableOpacity>
 
-        <Text style={[styles.label, { color: theme.textPrimary }]} numberOfLines={2}>
-          {task.label}
-        </Text>
+        <View style={{ flex: 1 }}>
+          <View style={styles.labelRow}>
+            <Text style={[styles.label, { color: theme.textPrimary }]} numberOfLines={2}>
+              {task.label}
+            </Text>
+
+            {/* Compulsory vs Optional Badge */}
+            <View style={[styles.poolTag, { backgroundColor: isCompulsory ? theme.accentBg : 'rgba(255,255,255,0.06)', borderColor: isCompulsory ? theme.accentBorder : theme.cardBorder }]}>
+              {isCompulsory ? (
+                <>
+                  <Shield color={theme.accentText} size={10} />
+                  <Text style={[styles.poolTagText, { color: theme.accentText }]}>CORE</Text>
+                </>
+              ) : (
+                <>
+                  <Sparkles color={theme.textMuted} size={10} />
+                  <Text style={[styles.poolTagText, { color: theme.textMuted }]}>BONUS</Text>
+                </>
+              )}
+            </View>
+          </View>
+
+          {/* Definite Target Progress Bar / Fraction */}
+          {isDefinite && targetQty ? (
+            <Text style={[styles.targetSubText, { color: theme.textSecondary }]}>
+              Target: {currentNumVal} / {targetQty} {task.unit || ''}
+            </Text>
+          ) : null}
+        </View>
       </View>
 
-      {/* Task Specific Inputs */}
+      {/* Numeric / Definite Input */}
       {task.type === 'numeric' && (
         <View style={styles.numericRow}>
           <TextInput
@@ -142,8 +176,12 @@ export function TaskRow({
             placeholder="0"
             placeholderTextColor={theme.textMuted}
             keyboardType="numeric"
-            value={normalizedValue.value ? String(normalizedValue.value) : ''}
-            onChangeText={(val) => onChangeValue(task.id, { ...normalizedValue, value: val })}
+            value={normalizedValue.value !== null && normalizedValue.value !== undefined ? String(normalizedValue.value) : ''}
+            onChangeText={(val) => {
+              const numVal = parseFloat(val) || 0;
+              const autoCompleted = targetQty ? numVal >= targetQty : normalizedValue.completed;
+              onChangeValue(task.id, { ...normalizedValue, value: val, completed: autoCompleted });
+            }}
           />
           {task.unit ? (
             <View style={[styles.unitBadge, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}>
@@ -153,6 +191,7 @@ export function TaskRow({
         </View>
       )}
 
+      {/* Photo Input */}
       {task.type === 'photo' && (
         <View style={styles.photoContainer}>
           {currentUri ? (
@@ -258,10 +297,35 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
   },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   label: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     flex: 1,
+  },
+  poolTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  poolTagText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  targetSubText: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
   },
   numericRow: {
     flexDirection: 'row',
