@@ -27,6 +27,7 @@ export interface Challenge {
   end_date: string;
   status: ChallengeStatus;
   template_id?: string;
+  failure_reason?: string;
   created_at: string;
   tasks?: ChallengeTask[];
 }
@@ -206,5 +207,32 @@ export async function deleteChallenge(
   }
 
   const { error } = await supabase.from('challenges').delete().eq('id', challengeId);
+  return { error: error?.message || null };
+}
+
+export async function updateChallengeStatus(
+  challengeId: string,
+  status: ChallengeStatus,
+  failureReason?: string,
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured()) {
+    const all = await getDemoChallenges();
+    const index = all.findIndex((c) => c.id === challengeId);
+    if (index >= 0) {
+      all[index].status = status;
+      if (failureReason) all[index].failure_reason = failureReason;
+      await saveDemoChallenges(all);
+    }
+    return { error: null };
+  }
+
+  const updateData: Record<string, any> = { status };
+  if (failureReason) updateData.failure_reason = failureReason;
+
+  const { error } = await supabase
+    .from('challenges')
+    .update(updateData)
+    .eq('id', challengeId);
+
   return { error: error?.message || null };
 }

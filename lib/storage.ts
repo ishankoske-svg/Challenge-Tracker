@@ -29,7 +29,21 @@ async function getDemoMedia(): Promise<MediaUpload[]> {
 }
 
 async function saveDemoMedia(media: MediaUpload[]): Promise<void> {
-  await AsyncStorage.setItem(DEMO_MEDIA_KEY, JSON.stringify(media));
+  try {
+    await AsyncStorage.setItem(DEMO_MEDIA_KEY, JSON.stringify(media));
+  } catch (err: any) {
+    console.warn('AsyncStorage quota exceeded, pruning old demo media...');
+    if (media.length > 1) {
+      const pruned = media.slice(Math.floor(media.length / 2));
+      try {
+        await AsyncStorage.setItem(DEMO_MEDIA_KEY, JSON.stringify(pruned));
+      } catch {
+        await AsyncStorage.removeItem(DEMO_MEDIA_KEY).catch(() => {});
+      }
+    } else {
+      await AsyncStorage.removeItem(DEMO_MEDIA_KEY).catch(() => {});
+    }
+  }
 }
 
 // ---------- PUBLIC API ----------

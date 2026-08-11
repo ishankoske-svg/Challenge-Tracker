@@ -1,9 +1,15 @@
 import React, { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, LogBox } from 'react-native';
 import { useAuthStore } from '../stores/authStore';
 import { useThemeStore } from '../stores/themeStore';
+
+// Suppress harmless DOM prop warnings caused by victory-native/react-native-svg on the web
+LogBox.ignoreLogs([
+  'React does not recognize the `accessib',
+  'React does not recognize the `testID`',
+]);
 
 export default function RootLayout() {
   const { user, isLoading, initializeAuth, isInitialized } = useAuthStore();

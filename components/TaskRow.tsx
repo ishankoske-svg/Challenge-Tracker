@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, StyleSheet, Modal, Dimensions } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Image, StyleSheet, Modal } from 'react-native';
 import { useThemeStore } from '../stores/themeStore';
 import { ChallengeTask } from '../lib/challenges';
 import * as ImagePicker from 'expo-image-picker';
@@ -8,13 +8,11 @@ import {
   Circle,
   Hash,
   Camera,
-  AlignLeft,
   Upload,
   Trash2,
   Maximize2,
   X,
   Crop,
-  Minimize2,
 } from 'lucide-react-native';
 
 interface TaskRowProps {
@@ -37,7 +35,17 @@ export function TaskRow({
   onRemoveMedia,
 }: TaskRowProps) {
   const { theme } = useThemeStore();
-  const currentUri = mediaUri || value;
+  
+  // Normalize legacy primitive values to the new object schema
+  const normalizedValue = typeof value === 'object' && value !== null 
+    ? value 
+    : { 
+        completed: !!value, 
+        note: task.type === 'text_note' ? (value || '') : '', 
+        value: task.type !== 'checkbox' && task.type !== 'text_note' ? (value || null) : null 
+      };
+
+  const currentUri = mediaUri || (typeof normalizedValue.value === 'string' && normalizedValue.value.startsWith('data:') ? normalizedValue.value : null);
 
   const [fitMode, setFitMode] = useState<FrameFitMode>('contain');
   const [aspectRatio, setAspectRatio] = useState<number | null>(null);
@@ -75,7 +83,7 @@ export function TaskRow({
     if (!result.canceled && result.assets && result.assets.length > 0) {
       const uri = result.assets[0].uri;
       onPickMedia?.(task.id, uri);
-      onChangeValue(task.id, uri);
+      onChangeValue(task.id, { ...normalizedValue, value: 'uploaded_media' });
     }
   };
 
@@ -85,7 +93,6 @@ export function TaskRow({
     else setFitMode('contain');
   };
 
-  // Determine height based on fitMode and aspect ratio
   const getFrameStyle = () => {
     if (fitMode === 'auto' && aspectRatio) {
       const calculatedHeight = Math.min(Math.max(200, 320 / aspectRatio), 420);
@@ -99,47 +106,32 @@ export function TaskRow({
 
   return (
     <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-      {/* Task Header */}
+      {/* Universal Task Header (Checkbox + Label) */}
       <View style={styles.header}>
-        <View style={[styles.typeIconBadge, { backgroundColor: theme.accentBg }]}>
-          {task.type === 'checkbox' && <CheckCircle2 color={theme.accentText} size={16} />}
-          {task.type === 'numeric' && <Hash color={theme.accentText} size={16} />}
-          {task.type === 'photo' && <Camera color={theme.accentText} size={16} />}
-          {task.type === 'text_note' && <AlignLeft color={theme.accentText} size={16} />}
-        </View>
+        <TouchableOpacity
+          style={[
+            styles.headerCheckbox,
+            { 
+              backgroundColor: normalizedValue.completed ? theme.accent : theme.inputBg,
+              borderColor: normalizedValue.completed ? theme.accent : theme.inputBorder 
+            }
+          ]}
+          activeOpacity={0.8}
+          onPress={() => onChangeValue(task.id, { ...normalizedValue, completed: !normalizedValue.completed })}
+        >
+          {normalizedValue.completed ? (
+            <CheckCircle2 color="#FFF" size={18} />
+          ) : (
+            <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: theme.textMuted }} />
+          )}
+        </TouchableOpacity>
 
         <Text style={[styles.label, { color: theme.textPrimary }]} numberOfLines={2}>
           {task.label}
         </Text>
       </View>
 
-      {/* Task Controls according to Type */}
-      {task.type === 'checkbox' && (
-        <TouchableOpacity
-          style={[
-            styles.checkboxBtn,
-            {
-              backgroundColor: value ? theme.accent : theme.inputBg,
-              borderColor: value ? theme.accent : theme.inputBorder,
-            },
-          ]}
-          activeOpacity={0.8}
-          onPress={() => onChangeValue(task.id, !value)}
-        >
-          {value ? (
-            <View style={styles.checkContent}>
-              <CheckCircle2 color="#FFF" size={18} />
-              <Text style={styles.checkTextActive}>Done Today</Text>
-            </View>
-          ) : (
-            <View style={styles.checkContent}>
-              <Circle color={theme.textMuted} size={18} />
-              <Text style={[styles.checkText, { color: theme.textSecondary }]}>Tap to Mark Done</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      )}
-
+      {/* Task Specific Inputs */}
       {task.type === 'numeric' && (
         <View style={styles.numericRow}>
           <TextInput
@@ -150,8 +142,8 @@ export function TaskRow({
             placeholder="0"
             placeholderTextColor={theme.textMuted}
             keyboardType="numeric"
-            value={value ? String(value) : ''}
-            onChangeText={(val) => onChangeValue(task.id, val)}
+            value={normalizedValue.value ? String(normalizedValue.value) : ''}
+            onChangeText={(val) => onChangeValue(task.id, { ...normalizedValue, value: val })}
           />
           {task.unit ? (
             <View style={[styles.unitBadge, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}>
@@ -161,26 +153,10 @@ export function TaskRow({
         </View>
       )}
 
-      {task.type === 'text_note' && (
-        <TextInput
-          style={[
-            styles.noteInput,
-            { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textPrimary },
-          ]}
-          placeholder="Type your notes or key insights here..."
-          placeholderTextColor={theme.textMuted}
-          multiline
-          numberOfLines={3}
-          value={value || ''}
-          onChangeText={(val) => onChangeValue(task.id, val)}
-        />
-      )}
-
       {task.type === 'photo' && (
         <View style={styles.photoContainer}>
           {currentUri ? (
             <View style={styles.mediaWrapper}>
-              {/* Image Preview Container */}
               <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={() => setFullScreenVisible(true)}
@@ -196,22 +172,13 @@ export function TaskRow({
                   resizeMode={fitMode === 'auto' ? 'contain' : fitMode}
                 />
 
-                {/* Overlaid Controls */}
                 <View style={styles.controlOverlay}>
-                  <TouchableOpacity
-                    style={[styles.overlayBtn, { backgroundColor: 'rgba(0,0,0,0.65)' }]}
-                    onPress={cycleFitMode}
-                  >
+                  <TouchableOpacity style={[styles.overlayBtn, { backgroundColor: 'rgba(0,0,0,0.65)' }]} onPress={cycleFitMode}>
                     <Crop color="#FFF" size={14} />
-                    <Text style={styles.overlayBtnText}>
-                      {fitMode === 'contain' ? 'Fit' : fitMode === 'cover' ? 'Fill' : 'Auto'}
-                    </Text>
+                    <Text style={styles.overlayBtnText}>{fitMode === 'contain' ? 'Fit' : fitMode === 'cover' ? 'Fill' : 'Auto'}</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={[styles.overlayBtn, { backgroundColor: 'rgba(0,0,0,0.65)' }]}
-                    onPress={() => setFullScreenVisible(true)}
-                  >
+                  <TouchableOpacity style={[styles.overlayBtn, { backgroundColor: 'rgba(0,0,0,0.65)' }]} onPress={() => setFullScreenVisible(true)}>
                     <Maximize2 color="#FFF" size={14} />
                     <Text style={styles.overlayBtnText}>Expand</Text>
                   </TouchableOpacity>
@@ -220,7 +187,7 @@ export function TaskRow({
                     style={[styles.overlayBtn, { backgroundColor: 'rgba(255,107,107,0.85)' }]}
                     onPress={() => {
                       onRemoveMedia?.(task.id);
-                      onChangeValue(task.id, null);
+                      onChangeValue(task.id, { ...normalizedValue, value: null });
                     }}
                   >
                     <Trash2 color="#FFF" size={14} />
@@ -239,27 +206,33 @@ export function TaskRow({
             </TouchableOpacity>
           )}
 
-          {/* Full Screen Lightbox Modal */}
           {currentUri && (
             <Modal visible={fullScreenVisible} transparent animationType="fade">
               <View style={styles.modalBg}>
-                <TouchableOpacity
-                  style={styles.modalCloseBtn}
-                  onPress={() => setFullScreenVisible(false)}
-                >
+                <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setFullScreenVisible(false)}>
                   <X color="#FFF" size={24} />
                 </TouchableOpacity>
-
-                <Image
-                  source={{ uri: currentUri }}
-                  style={styles.modalImage}
-                  resizeMode="contain"
-                />
+                <Image source={{ uri: currentUri }} style={styles.modalImage} resizeMode="contain" />
               </View>
             </Modal>
           )}
         </View>
       )}
+
+      {/* Universal Notes Field */}
+      <TextInput
+        style={[
+          styles.globalNoteInput,
+          { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textPrimary },
+          (task.type === 'numeric' || task.type === 'photo') && { marginTop: 12 }
+        ]}
+        placeholder="Add a note (optional)..."
+        placeholderTextColor={theme.textMuted}
+        multiline
+        numberOfLines={2}
+        value={normalizedValue.note || ''}
+        onChangeText={(val) => onChangeValue(task.id, { ...normalizedValue, note: val })}
+      />
     </View>
   );
 }
@@ -274,41 +247,21 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     marginBottom: 12,
   },
-  typeIconBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  headerCheckbox: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
   },
   label: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     flex: 1,
-  },
-  checkboxBtn: {
-    height: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-  },
-  checkContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  checkText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  checkTextActive: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFF',
   },
   numericRow: {
     flexDirection: 'row',
@@ -334,11 +287,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  noteInput: {
-    height: 76,
+  globalNoteInput: {
+    minHeight: 54,
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingTop: 10,
+    paddingTop: 12,
+    paddingBottom: 12,
     fontSize: 14,
     borderWidth: 1,
     textAlignVertical: 'top',

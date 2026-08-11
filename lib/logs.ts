@@ -33,7 +33,21 @@ async function getDemoLogs(): Promise<DailyLog[]> {
 }
 
 async function saveDemoLogs(logs: DailyLog[]): Promise<void> {
-  await AsyncStorage.setItem(DEMO_LOGS_KEY, JSON.stringify(logs));
+  try {
+    await AsyncStorage.setItem(DEMO_LOGS_KEY, JSON.stringify(logs));
+  } catch (err) {
+    console.warn('AsyncStorage quota exceeded for logs, pruning old logs...');
+    if (logs.length > 1) {
+      const pruned = logs.slice(Math.floor(logs.length / 2));
+      try {
+        await AsyncStorage.setItem(DEMO_LOGS_KEY, JSON.stringify(pruned));
+      } catch {
+        await AsyncStorage.removeItem(DEMO_LOGS_KEY).catch(() => {});
+      }
+    } else {
+      await AsyncStorage.removeItem(DEMO_LOGS_KEY).catch(() => {});
+    }
+  }
 }
 
 // ---------- PUBLIC API ----------

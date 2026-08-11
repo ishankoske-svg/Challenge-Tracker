@@ -14,8 +14,9 @@ import { useThemeStore } from '../../stores/themeStore';
 import { useChallengeStore } from '../../stores/challengeStore';
 import { ThemeSwitcher } from '../../components/ThemeSwitcher';
 import { TaskRow } from '../../components/TaskRow';
-import { Challenge, fetchChallengeWithTasks } from '../../lib/challenges';
+import { Challenge, fetchChallengeWithTasks, updateChallengeStatus } from '../../lib/challenges';
 import { fetchLogForDate, saveLog, getStreakForChallenge } from '../../lib/logs';
+import { checkAndAwardBadges } from '../../lib/badges';
 import { uploadProgressMedia, fetchMediaForLog } from '../../lib/storage';
 import { CalendarCheck, Flame, CheckCircle2, AlertCircle, ChevronDown, Sparkles } from 'lucide-react-native';
 
@@ -74,10 +75,13 @@ export default function LogScreen() {
 
       // Load media for log
       const { media } = await fetchMediaForLog(log.id, userId);
-      if (media && media.length > 0) {
+      if (media && media.length > 0 && challenge.tasks) {
+        const photoTasks = challenge.tasks.filter(t => t.type === 'photo');
         const mediaMap: Record<string, string> = {};
-        media.forEach((m) => {
-          mediaMap[m.daily_log_id] = m.storage_path;
+        photoTasks.forEach((pt, idx) => {
+          if (media[idx]) {
+            mediaMap[pt.id] = media[idx].storage_path;
+          }
         });
         setMediaUris(mediaMap);
       }
@@ -97,10 +101,12 @@ export default function LogScreen() {
 
   const handleTaskValueChange = (taskId: string, val: any) => {
     setTaskValues((prev) => ({ ...prev, [taskId]: val }));
+    setSavedSuccess(false);
   };
 
   const handlePickMedia = (taskId: string, uri: string) => {
     setMediaUris((prev) => ({ ...prev, [taskId]: uri }));
+    setSavedSuccess(false);
   };
 
   const handleRemoveMedia = (taskId: string) => {
@@ -109,6 +115,7 @@ export default function LogScreen() {
       delete copy[taskId];
       return copy;
     });
+    setSavedSuccess(false);
   };
 
   const handleSaveLog = async () => {
@@ -143,6 +150,22 @@ export default function LogScreen() {
     // 3. Recalculate streak
     const newStreak = await getStreakForChallenge(selectedChallengeId, userId);
     setStreak(newStreak);
+
+    // 4. Check for badge unlocks and challenge completion
+    if (currentChallenge && logDate === currentChallenge.end_date) {
+      await updateChallengeStatus(selectedChallengeId, 'completed');
+      const earned = await checkAndAwardBadges(userId, 'challenge_completed');
+      if (earned.length > 0) {
+        Alert.alert('Badges Unlocked!', `You earned: ${earned.map(b => b.name).join(', ')}`);
+      } else {
+        Alert.alert('Challenge Completed!', 'Great job finishing the challenge!');
+      }
+    } else {
+      const earned = await checkAndAwardBadges(userId, 'log_saved', selectedChallengeId);
+      if (earned.length > 0) {
+        Alert.alert('Badges Unlocked!', `You earned: ${earned.map(b => b.name).join(', ')}`);
+      }
+    }
 
     setSaving(false);
     setSavedSuccess(true);
@@ -267,18 +290,26 @@ export default function LogScreen() {
                   multiline
                   numberOfLines={4}
                   value={notes}
-                  onChangeText={setNotes}
+                  onChangeText={(val) => {
+                    setNotes(val);
+                    setSavedSuccess(false);
+                  }}
                 />
 
                 {/* Save CTA Button */}
                 <TouchableOpacity
-                  style={[styles.saveBtn, { backgroundColor: theme.accent }]}
+                  style={[styles.saveBtn, { backgroundColor: savedSuccess ? '#10b981' : theme.accent }]}
                   activeOpacity={0.85}
                   onPress={handleSaveLog}
-                  disabled={saving}
+                  disabled={saving || savedSuccess}
                 >
                   {saving ? (
                     <ActivityIndicator color="#FFF" />
+                  ) : savedSuccess ? (
+                    <View style={styles.btnContent}>
+                      <CheckCircle2 color="#FFF" size={20} />
+                      <Text style={styles.saveBtnText}>Saved!</Text>
+                    </View>
                   ) : (
                     <View style={styles.btnContent}>
                       <CheckCircle2 color="#FFF" size={20} />
