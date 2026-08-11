@@ -4,6 +4,7 @@ import { useThemeStore } from '../../stores/themeStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useChallengeStore } from '../../stores/challengeStore';
 import { ThemeSwitcher } from '../../components/ThemeSwitcher';
+import { PenaltyIndicator } from '../../components/PenaltyIndicator';
 import { BarChart3, TrendingUp, Sparkles, AlertCircle, Calendar, Flag } from 'lucide-react-native';
 import { fetchChallengeWithTasks, Challenge, ChallengeTask, updateChallengeStatus } from '../../lib/challenges';
 import { fetchLogsForChallenge, getStreakForChallenge, DailyLog } from '../../lib/logs';
@@ -198,6 +199,13 @@ export default function StatsScreen() {
 
         {!loading && currentChallenge && (
           <>
+            {/* Heart / Penalty Indicator */}
+            <PenaltyIndicator
+              difficultyMode={currentChallenge.difficulty_mode || 'medium'}
+              maxPenalties={currentChallenge.max_penalties ?? 7}
+              penaltiesUsed={currentChallenge.penalties_used ?? 0}
+            />
+
             {/* Top Stat Cards */}
             <View style={styles.topStatsRow}>
               <View style={[styles.statBox, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
