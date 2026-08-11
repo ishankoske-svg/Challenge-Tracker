@@ -9,6 +9,7 @@ import {
 } from '../lib/challenges';
 import { TaskTemplate } from '../constants/templates';
 import { ChallengeCategory } from '../lib/challenges';
+import { reconcileUnloggedDaysPenalties } from '../lib/logs';
 
 interface ChallengeState {
   challenges: Challenge[];
@@ -40,9 +41,25 @@ export const useChallengeStore = create<ChallengeState>((set, get) => ({
 
   loadChallenges: async (userId: string) => {
     set({ isLoading: true, error: null });
-    const { challenges, error } = await fetchChallenges(userId);
-    const active = challenges.filter((c) => c.status === 'active');
-    set({ challenges, activeChallenges: active, isLoading: false, error });
+    const { challenges: fetched, error } = await fetchChallenges(userId);
+
+    // Reconcile unlogged days penalties for active challenges
+    const updatedChallenges = [...fetched];
+    for (let i = 0; i < updatedChallenges.length; i++) {
+      if (updatedChallenges[i].status === 'active') {
+        const { penaltiesAdded, failed } = await reconcileUnloggedDaysPenalties(updatedChallenges[i], userId);
+        if (penaltiesAdded > 0) {
+          updatedChallenges[i] = {
+            ...updatedChallenges[i],
+            penalties_used: (updatedChallenges[i].penalties_used || 0) + penaltiesAdded,
+            status: failed ? 'failed' : updatedChallenges[i].status,
+          };
+        }
+      }
+    }
+
+    const active = updatedChallenges.filter((c) => c.status === 'active');
+    set({ challenges: updatedChallenges, activeChallenges: active, isLoading: false, error });
   },
 
   addChallenge: async (userId, title, category, description, durationDays, startDate, tasks, difficultyMode, templateId) => {

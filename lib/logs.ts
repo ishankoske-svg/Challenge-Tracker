@@ -1,6 +1,6 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ChallengeTask } from './challenges';
+import { ChallengeTask, Challenge, incrementPenalty } from './challenges';
 
 const DEMO_LOGS_KEY = '@challengr_demo_logs';
 
@@ -82,7 +82,7 @@ export function evaluateDayCompletion(
   return { compulsory_pct, optional_pct, penalty, missedTaskIds };
 }
 
-// ---------- GRACE WINDOW ----------
+// ---------- GRACE WINDOW & MISSED DAY RECONCILIATION ----------
 
 export function isWithinGraceWindow(dateStr: string): boolean {
   const now = new Date();
@@ -105,6 +105,73 @@ export function getDayNumber(startDate: string, logDate: string): number {
   const log = new Date(logDate);
   const diffMs = log.getTime() - start.getTime();
   return Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+}
+
+/**
+ * Reconciles unlogged past days for an active challenge.
+ * If a past date (prior to grace period cutoff) has no log entry,
+ * it automatically logs a missed day and increments penalties.
+ */
+export async function reconcileUnloggedDaysPenalties(
+  challenge: Challenge,
+  userId: string,
+): Promise<{ penaltiesAdded: number; failed: boolean }> {
+  if (challenge.status !== 'active') return { penaltiesAdded: 0, failed: false };
+
+  const { logs } = await fetchLogsForChallenge(challenge.id, userId);
+  const loggedDates = new Set(logs.map((l) => l.log_date));
+
+  const startDate = new Date(challenge.start_date);
+  const now = new Date();
+  const today = todayStr();
+
+  // Cutoff date for unlogged reconciliation (yesterday, or today if past 6:00 AM)
+  const cutoffDate = new Date(now);
+  if (now.getHours() < 6) {
+    cutoffDate.setDate(cutoffDate.getDate() - 2); // yesterday is still in grace period
+  } else {
+    cutoffDate.setDate(cutoffDate.getDate() - 1); // yesterday grace period has expired
+  }
+
+  let curr = new Date(startDate);
+  let penaltiesAdded = 0;
+  let isFailed = false;
+
+  while (curr <= cutoffDate) {
+    const currStr = curr.toISOString().split('T')[0];
+
+    if (!loggedDates.has(currStr)) {
+      // Auto-register missed day
+      const dayNum = getDayNumber(challenge.start_date, currStr);
+      const missedEvaluation: DayEvaluation = {
+        compulsory_pct: 0,
+        optional_pct: 0,
+        penalty: true,
+        missedTaskIds: challenge.tasks ? challenge.tasks.filter(t => t.is_compulsory).map(t => t.id) : [],
+      };
+
+      await saveLog(
+        challenge.id,
+        userId,
+        {},
+        'Auto-penalty: Missed daily log',
+        missedEvaluation,
+        dayNum,
+        currStr,
+      );
+
+      const res = await incrementPenalty(challenge.id);
+      penaltiesAdded++;
+      if (res.failed) {
+        isFailed = true;
+        break;
+      }
+    }
+
+    curr.setDate(curr.getDate() + 1);
+  }
+
+  return { penaltiesAdded, failed: isFailed };
 }
 
 // ---------- DEMO STORAGE ----------
