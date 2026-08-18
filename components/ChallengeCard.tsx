@@ -58,10 +58,10 @@ export function ChallengeCard({ challenge, onPress }: ChallengeCardProps) {
             {challenge.title}
           </Text>
           <View style={styles.metaRow}>
-            <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[challenge.status] + '22' }]}>
-              <View style={[styles.statusDot, { backgroundColor: STATUS_COLORS[challenge.status] }]} />
-              <Text style={[styles.statusText, { color: STATUS_COLORS[challenge.status] }]}>
-                {challenge.status.charAt(0).toUpperCase() + challenge.status.slice(1)}
+            <View style={[styles.statusBadge, { backgroundColor: (challenge.is_paused ? '#FFA502' : STATUS_COLORS[challenge.status]) + '22' }]}>
+              <View style={[styles.statusDot, { backgroundColor: challenge.is_paused ? '#FFA502' : STATUS_COLORS[challenge.status] }]} />
+              <Text style={[styles.statusText, { color: challenge.is_paused ? '#FFA502' : STATUS_COLORS[challenge.status] }]}>
+                {challenge.is_paused ? '🌴 Paused' : challenge.status.charAt(0).toUpperCase() + challenge.status.slice(1)}
               </Text>
             </View>
             <PenaltyIndicator compact difficultyMode={mode} maxPenalties={maxPenalties} penaltiesUsed={penaltiesUsed} />

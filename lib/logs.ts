@@ -116,7 +116,7 @@ export async function reconcileUnloggedDaysPenalties(
   challenge: Challenge,
   userId: string,
 ): Promise<{ penaltiesAdded: number; failed: boolean }> {
-  if (challenge.status !== 'active') return { penaltiesAdded: 0, failed: false };
+  if (challenge.status !== 'active' || challenge.is_paused) return { penaltiesAdded: 0, failed: false };
 
   const { logs } = await fetchLogsForChallenge(challenge.id, userId);
   const loggedDates = new Set(logs.map((l) => l.log_date));

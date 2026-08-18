@@ -135,3 +135,59 @@ export async function getMediaUrl(storagePath: string): Promise<string> {
   const { data } = supabase.storage.from('progress-media').getPublicUrl(storagePath);
   return data.publicUrl;
 }
+
+export interface ChallengePhotoItem {
+  id: string;
+  logId: string;
+  logDate: string;
+  dayNumber?: number;
+  uri: string;
+}
+
+export async function fetchChallengePhotos(
+  challengeId: string,
+  userId: string,
+  logs: { id: string; log_date: string; day_number?: number }[],
+): Promise<ChallengePhotoItem[]> {
+  const photoItems: ChallengePhotoItem[] = [];
+  const logMap = new Map(logs.map((l) => [l.id, l]));
+
+  if (!isSupabaseConfigured()) {
+    const all = await getDemoMedia();
+    for (const m of all) {
+      if (m.user_id === userId && logMap.has(m.daily_log_id)) {
+        const log = logMap.get(m.daily_log_id)!;
+        photoItems.push({
+          id: m.id,
+          logId: m.daily_log_id,
+          logDate: log.log_date,
+          dayNumber: log.day_number,
+          uri: m.storage_path || m.local_uri || '',
+        });
+      }
+    }
+  } else {
+    const logIds = logs.map((l) => l.id);
+    if (logIds.length === 0) return [];
+    const { data } = await supabase
+      .from('media_uploads')
+      .select('*')
+      .in('daily_log_id', logIds);
+
+    if (data) {
+      for (const m of data) {
+        const log = logMap.get(m.daily_log_id);
+        const url = await getMediaUrl(m.storage_path);
+        photoItems.push({
+          id: m.id,
+          logId: m.daily_log_id,
+          logDate: log?.log_date || '',
+          dayNumber: log?.day_number,
+          uri: url,
+        });
+      }
+    }
+  }
+
+  return photoItems.sort((a, b) => new Date(a.logDate).getTime() - new Date(b.logDate).getTime());
+}

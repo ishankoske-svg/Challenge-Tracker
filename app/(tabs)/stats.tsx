@@ -5,9 +5,13 @@ import { useAuthStore } from '../../stores/authStore';
 import { useChallengeStore } from '../../stores/challengeStore';
 import { ThemeSwitcher } from '../../components/ThemeSwitcher';
 import { PenaltyIndicator } from '../../components/PenaltyIndicator';
-import { BarChart3, TrendingUp, Sparkles, AlertCircle, Calendar, Flag } from 'lucide-react-native';
+import { TrajectoryCard } from '../../components/TrajectoryCard';
+import { PhotoGalleryModal } from '../../components/PhotoGalleryModal';
+import { ChallengeSettingsModal } from '../../components/ChallengeSettingsModal';
+import { BarChart3, TrendingUp, Sparkles, AlertCircle, Calendar, Flag, Image as ImageIcon, Sliders, Palmtree } from 'lucide-react-native';
 import { fetchChallengeWithTasks, Challenge, ChallengeTask, updateChallengeStatus } from '../../lib/challenges';
 import { fetchLogsForChallenge, getStreakForChallenge, DailyLog } from '../../lib/logs';
+import { fetchChallengePhotos, ChallengePhotoItem } from '../../lib/storage';
 import { generateProgressSummary } from '../../lib/ai';
 import { VictoryBar, VictoryChart, VictoryTheme, VictoryLine, VictoryAxis, VictoryGroup } from 'victory-native';
 
@@ -20,11 +24,16 @@ export default function StatsScreen() {
   const [selectedChallengeId, setSelectedChallengeId] = useState<string | null>(null);
   const [currentChallenge, setCurrentChallenge] = useState<Challenge | null>(null);
   const [logs, setLogs] = useState<DailyLog[]>([]);
+  const [photos, setPhotos] = useState<ChallengePhotoItem[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [streak, setStreak] = useState(0);
   const [aiSummary, setAiSummary] = useState('');
   const [generatingAi, setGeneratingAi] = useState(false);
+
+  // Modals
+  const [showGalleryModal, setShowGalleryModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   // Give Up state
   const [showGiveUpForm, setShowGiveUpForm] = useState(false);
@@ -58,8 +67,11 @@ export default function StatsScreen() {
       getStreakForChallenge(challengeId, userId)
     ]);
 
+    const photoItems = await fetchChallengePhotos(challengeId, userId, fetchedLogs);
+
     setCurrentChallenge(challenge);
     setLogs(fetchedLogs);
+    setPhotos(photoItems);
     setStreak(currentStreak);
 
     if (challenge && fetchedLogs.length > 0) {
@@ -205,6 +217,34 @@ export default function StatsScreen() {
               maxPenalties={currentChallenge.max_penalties ?? 7}
               penaltiesUsed={currentChallenge.penalties_used ?? 0}
             />
+
+            {/* Quick Actions Row */}
+            <View style={styles.quickActionsRow}>
+              <TouchableOpacity
+                onPress={() => setShowGalleryModal(true)}
+                style={[styles.quickActionBtn, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+                activeOpacity={0.8}
+              >
+                <ImageIcon color={theme.accent} size={16} />
+                <Text style={[styles.quickActionText, { color: theme.textPrimary }]}>
+                  Gallery ({photos.length})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setShowSettingsModal(true)}
+                style={[styles.quickActionBtn, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+                activeOpacity={0.8}
+              >
+                <Palmtree color="#FFA502" size={16} />
+                <Text style={[styles.quickActionText, { color: theme.textPrimary }]}>
+                  {currentChallenge.is_paused ? '🌴 Paused' : 'Vacation & Goals'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Trajectory Prediction Engine Card */}
+            <TrajectoryCard challenge={currentChallenge} logs={logs} />
 
             {/* Top Stat Cards */}
             <View style={styles.topStatsRow}>
@@ -352,6 +392,25 @@ export default function StatsScreen() {
                 </View>
               </View>
             )}
+
+            {/* Photo Gallery Modal */}
+            <PhotoGalleryModal
+              visible={showGalleryModal}
+              onClose={() => setShowGalleryModal(false)}
+              challengeTitle={currentChallenge.title}
+              photos={photos}
+            />
+
+            {/* Challenge Settings & Vacation Modal */}
+            <ChallengeSettingsModal
+              visible={showSettingsModal}
+              onClose={() => setShowSettingsModal(false)}
+              challenge={currentChallenge}
+              onUpdated={() => {
+                if (selectedChallengeId) loadStats(selectedChallengeId);
+                loadChallenges(userId);
+              }}
+            />
           </>
         )}
       </ScrollView>
@@ -369,6 +428,25 @@ const styles = StyleSheet.create({
   titleGroup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   screenTitle: { fontSize: 20, fontWeight: '800' },
   content: { padding: 20, paddingBottom: 40 },
+  quickActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 8,
+  },
+  quickActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  quickActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
   pickerSection: { marginBottom: 16 },
   sectionLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.8, marginBottom: 10 },
   pillScroll: { flexDirection: 'row' },

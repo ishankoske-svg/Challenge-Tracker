@@ -55,6 +55,9 @@ export interface Challenge {
   penalties_used: number;
   template_id?: string;
   failure_reason?: string;
+  is_paused?: boolean;
+  paused_at?: string | null;
+  pause_days_remaining?: number;
   created_at: string;
   tasks?: ChallengeTask[];
 }
@@ -321,4 +324,123 @@ export async function incrementPenalty(
   const { error } = await supabase.from('challenges').update(updateData).eq('id', challengeId);
 
   return { newCount, failed, error: error?.message || null };
+}
+
+export async function pauseChallenge(
+  challengeId: string,
+  pauseDays: number = 1,
+): Promise<{ success: boolean; error: string | null }> {
+  const safeDays = Math.min(3, Math.max(1, pauseDays));
+  const today = formatDate(new Date());
+
+  if (!isSupabaseConfigured()) {
+    const all = await getDemoChallenges();
+    const index = all.findIndex((c) => c.id === challengeId);
+    if (index >= 0) {
+      const remaining = all[index].pause_days_remaining !== undefined ? all[index].pause_days_remaining : 3;
+      if (remaining < safeDays) {
+        return { success: false, error: `Only ${remaining} pause days remaining.` };
+      }
+      all[index].is_paused = true;
+      all[index].paused_at = today;
+      all[index].pause_days_remaining = remaining - safeDays;
+
+      // Extend end date by pauseDays
+      const end = new Date(all[index].end_date);
+      end.setDate(end.getDate() + safeDays);
+      all[index].end_date = formatDate(end);
+
+      await saveDemoChallenges(all);
+      return { success: true, error: null };
+    }
+    return { success: false, error: 'Challenge not found' };
+  }
+
+  const { data: challenge, error: fErr } = await supabase
+    .from('challenges')
+    .select('pause_days_remaining, end_date')
+    .eq('id', challengeId)
+    .single();
+
+  if (fErr || !challenge) return { success: false, error: fErr?.message || 'Not found' };
+
+  const remaining = challenge.pause_days_remaining !== undefined ? challenge.pause_days_remaining : 3;
+  if (remaining < safeDays) {
+    return { success: false, error: `Only ${remaining} pause days remaining.` };
+  }
+
+  const end = new Date(challenge.end_date);
+  end.setDate(end.getDate() + safeDays);
+
+  const { error } = await supabase
+    .from('challenges')
+    .update({
+      is_paused: true,
+      paused_at: today,
+      pause_days_remaining: remaining - safeDays,
+      end_date: formatDate(end),
+    })
+    .eq('id', challengeId);
+
+  return { success: !error, error: error?.message || null };
+}
+
+export async function resumeChallenge(
+  challengeId: string,
+): Promise<{ success: boolean; error: string | null }> {
+  if (!isSupabaseConfigured()) {
+    const all = await getDemoChallenges();
+    const index = all.findIndex((c) => c.id === challengeId);
+    if (index >= 0) {
+      all[index].is_paused = false;
+      all[index].paused_at = null;
+      await saveDemoChallenges(all);
+      return { success: true, error: null };
+    }
+    return { success: false, error: 'Challenge not found' };
+  }
+
+  const { error } = await supabase
+    .from('challenges')
+    .update({
+      is_paused: false,
+      paused_at: null,
+    })
+    .eq('id', challengeId);
+
+  return { success: !error, error: error?.message || null };
+}
+
+export async function updateChallengeTaskTarget(
+  taskId: string,
+  newTarget: number,
+): Promise<{ success: boolean; error: string | null }> {
+  const safeTarget = Math.max(1, Math.round(newTarget));
+
+  if (!isSupabaseConfigured()) {
+    const all = await getDemoChallenges();
+    let found = false;
+    for (const c of all) {
+      if (c.tasks) {
+        const t = c.tasks.find((task) => task.id === taskId);
+        if (t) {
+          t.target_quantity = safeTarget;
+          found = true;
+          break;
+        }
+      }
+    }
+    if (found) {
+      await saveDemoChallenges(all);
+      return { success: true, error: null };
+    }
+    return { success: false, error: 'Task not found' };
+  }
+
+  const { error } = await supabase
+    .from('challenge_tasks')
+    .update({ target_quantity: safeTarget })
+    .eq('id', taskId);
+
+  return { success: !error, error: error?.message || null };
 }
