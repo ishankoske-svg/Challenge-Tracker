@@ -119,3 +119,64 @@ CREATE POLICY "Anyone can read badges" ON public.badges FOR SELECT USING (true);
 
 -- User Badges Policy
 CREATE POLICY "Users can manage own badges" ON public.user_badges FOR ALL USING (auth.uid() = user_id);
+
+-- 8. Pods Table
+CREATE TABLE IF NOT EXISTS public.pods (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  created_by UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  invite_code TEXT UNIQUE NOT NULL,
+  challenge_template_id TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 9. Pod Members Table
+CREATE TABLE IF NOT EXISTS public.pod_members (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  pod_id UUID NOT NULL REFERENCES public.pods(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  joined_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  CONSTRAINT unique_pod_user UNIQUE (pod_id, user_id)
+);
+
+-- 10. Community Templates Table
+CREATE TABLE IF NOT EXISTS public.community_templates (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  author_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  category TEXT NOT NULL,
+  description TEXT,
+  tasks_json JSONB NOT NULL,
+  fork_count INT DEFAULT 0,
+  like_count INT DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 11. Template Likes Table
+CREATE TABLE IF NOT EXISTS public.template_likes (
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  template_id UUID NOT NULL REFERENCES public.community_templates(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  PRIMARY KEY (user_id, template_id)
+);
+
+-- Phase 6 RLS Policies
+ALTER TABLE public.pods ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pod_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.community_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.template_likes ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can read community templates" ON public.community_templates FOR SELECT USING (true);
+CREATE POLICY "Users can manage own templates" ON public.community_templates FOR ALL USING (auth.uid() = author_id);
+
+CREATE POLICY "Anyone can read template likes" ON public.template_likes FOR SELECT USING (true);
+CREATE POLICY "Users can manage own likes" ON public.template_likes FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view pods they are in" ON public.pods FOR SELECT 
+  USING (EXISTS (SELECT 1 FROM public.pod_members WHERE pod_members.pod_id = pods.id AND pod_members.user_id = auth.uid()));
+CREATE POLICY "Users can create pods" ON public.pods FOR INSERT WITH CHECK (auth.uid() = created_by);
+
+CREATE POLICY "Users can view pod members if they are in the pod" ON public.pod_members FOR SELECT
+  USING (EXISTS (SELECT 1 FROM public.pod_members pm WHERE pm.pod_id = pod_members.pod_id AND pm.user_id = auth.uid()));
+CREATE POLICY "Users can manage own pod membership" ON public.pod_members FOR ALL USING (auth.uid() = user_id);
+

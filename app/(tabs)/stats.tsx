@@ -12,7 +12,13 @@ import { BarChart3, TrendingUp, Sparkles, AlertCircle, Calendar, Flag, Image as 
 import { fetchChallengeWithTasks, Challenge, ChallengeTask, updateChallengeStatus } from '../../lib/challenges';
 import { fetchLogsForChallenge, getStreakForChallenge, DailyLog } from '../../lib/logs';
 import { fetchChallengePhotos, ChallengePhotoItem } from '../../lib/storage';
-import { generateProgressSummary } from '../../lib/ai';
+import { generateProgressSummary, analyzeWeaknesses, generateCoachingNudge, suggestDifficultyAdjustment } from '../../lib/ai';
+import { computeHourlyHeatmap, generateWeeklyRecaps, buildShareCardData, HeatmapCell, WeeklyRecap, ShareCardData } from '../../lib/analytics';
+import { getUserXPAndLevel, fetchUserBadges } from '../../lib/badges';
+import { CompletionHeatmap } from '../../components/CompletionHeatmap';
+import { WeeklyRecapCard } from '../../components/WeeklyRecapCard';
+import { MilestoneShareCard } from '../../components/MilestoneShareCard';
+import { CoachingCard } from '../../components/CoachingCard';
 import { VictoryBar, VictoryChart, VictoryTheme, VictoryLine, VictoryAxis, VictoryGroup } from 'victory-native';
 
 export default function StatsScreen() {
@@ -30,6 +36,16 @@ export default function StatsScreen() {
   const [streak, setStreak] = useState(0);
   const [aiSummary, setAiSummary] = useState('');
   const [generatingAi, setGeneratingAi] = useState(false);
+  
+  // Analytics
+  const [heatmapCells, setHeatmapCells] = useState<HeatmapCell[]>([]);
+  const [weeklyRecaps, setWeeklyRecaps] = useState<WeeklyRecap[]>([]);
+  const [shareData, setShareData] = useState<ShareCardData | null>(null);
+
+  // AI Coaching
+  const [coachingNudge, setCoachingNudge] = useState<{ text: string; actionItem?: string } | null>(null);
+  const [difficultySuggestion, setDifficultySuggestion] = useState<'step_down' | 'step_up' | null>(null);
+  const [showCoaching, setShowCoaching] = useState(true);
 
   // Modals
   const [showGalleryModal, setShowGalleryModal] = useState(false);
@@ -69,18 +85,31 @@ export default function StatsScreen() {
 
     const photoItems = await fetchChallengePhotos(challengeId, userId, fetchedLogs);
 
+    const [xpData, { earnedBadges }] = await Promise.all([
+      getUserXPAndLevel(userId),
+      fetchUserBadges(userId)
+    ]);
+
     setCurrentChallenge(challenge);
     setLogs(fetchedLogs);
     setPhotos(photoItems);
     setStreak(currentStreak);
 
     if (challenge && fetchedLogs.length > 0) {
-      setGeneratingAi(true);
-      const summary = await generateProgressSummary(challenge, fetchedLogs);
-      setAiSummary(summary);
-      setGeneratingAi(false);
+      setHeatmapCells(computeHourlyHeatmap(fetchedLogs));
+      setWeeklyRecaps(generateWeeklyRecaps(challenge, fetchedLogs));
+      setShareData(buildShareCardData(challenge, fetchedLogs, currentStreak, xpData, earnedBadges.length));
+      
+      const weaknesses = analyzeWeaknesses(challenge, fetchedLogs);
+      const nudge = await generateCoachingNudge(challenge, fetchedLogs, weaknesses);
+      const diffSugg = suggestDifficultyAdjustment(challenge, fetchedLogs);
+      
+      setCoachingNudge(nudge);
+      setDifficultySuggestion(diffSugg);
+      setShowCoaching(true);
     } else {
-      setAiSummary('Log some days to get AI insights!');
+      setCoachingNudge(null);
+      setDifficultySuggestion(null);
     }
 
     setLoading(false);
@@ -260,21 +289,20 @@ export default function StatsScreen() {
               </View>
             </View>
 
-            {/* AI Summary Card */}
-            <View style={[styles.aiCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-              <View style={styles.aiHeader}>
-                <Sparkles color={theme.accent} size={18} />
-                <Text style={[styles.aiTitle, { color: theme.textPrimary }]}>AI Insights</Text>
-              </View>
-              {generatingAi ? (
-                <View style={styles.aiLoading}>
-                  <ActivityIndicator size="small" color={theme.accent} />
-                  <Text style={{ color: theme.textSecondary, marginLeft: 8 }}>Analyzing progress...</Text>
-                </View>
-              ) : (
-                <Text style={[styles.aiText, { color: theme.textSecondary }]}>{aiSummary}</Text>
-              )}
-            </View>
+            {/* AI Coaching Card */}
+            {showCoaching && (coachingNudge || difficultySuggestion) && (
+              <CoachingCard
+                nudge={coachingNudge}
+                difficultySuggestion={difficultySuggestion}
+                onDismiss={() => setShowCoaching(false)}
+                onApplyDifficulty={() => setShowSettingsModal(true)}
+              />
+            )}
+
+            {/* Analytics Components */}
+            {heatmapCells.length > 0 && <CompletionHeatmap cells={heatmapCells} />}
+            {weeklyRecaps.length > 0 && <WeeklyRecapCard recap={weeklyRecaps[weeklyRecaps.length - 1]} />}
+            {shareData && <MilestoneShareCard data={shareData} />}
 
             {/* Bar Chart (Completion) */}
             {barData.length > 0 ? (

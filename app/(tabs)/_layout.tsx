@@ -1,7 +1,7 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { useThemeStore } from '../../stores/themeStore';
-import { Home, CalendarCheck, PlusCircle, BarChart3, User } from 'lucide-react-native';
+import { Home, CalendarCheck, PlusCircle, BarChart3, User, Users } from 'lucide-react-native';
 
 export default function TabsLayout() {
   const { theme } = useThemeStore();
@@ -51,6 +51,13 @@ export default function TabsLayout() {
         options={{
           title: 'Stats',
           tabBarIcon: ({ color, size }) => <BarChart3 color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="community"
+        options={{
+          title: 'Community',
+          tabBarIcon: ({ color, size }) => <Users color={color} size={size} />,
         }}
       />
       <Tabs.Screen

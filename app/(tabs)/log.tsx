@@ -16,8 +16,9 @@ import { ThemeSwitcher } from '../../components/ThemeSwitcher';
 import { TaskRow } from '../../components/TaskRow';
 import { PenaltyIndicator } from '../../components/PenaltyIndicator';
 import { Challenge, fetchChallengeWithTasks, updateChallengeStatus, incrementPenalty } from '../../lib/challenges';
-import { fetchLogForDate, saveLog, getStreakForChallenge, evaluateDayCompletion, isWithinGraceWindow, getDayNumber } from '../../lib/logs';
+import { fetchLogForDate, saveLog, getStreakForChallenge, evaluateDayCompletion, isWithinGraceWindow, getDayNumber, fetchLogsForChallenge } from '../../lib/logs';
 import { checkAndAwardBadges } from '../../lib/badges';
+import { analyzeWeaknesses, generateCoachingNudge } from '../../lib/ai';
 import { uploadProgressMedia, fetchMediaForLog } from '../../lib/storage';
 import { CalendarCheck, Flame, CheckCircle2, AlertCircle, Shield, Sparkles, Heart } from 'lucide-react-native';
 
@@ -41,6 +42,7 @@ export default function LogScreen() {
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
+  const [nudgeBanner, setNudgeBanner] = useState<{ text: string; actionItem?: string } | null>(null);
 
   useEffect(() => {
     loadChallenges(userId);
@@ -63,6 +65,7 @@ export default function LogScreen() {
   const loadChallengeDetailsAndLog = async (challengeId: string, date: string) => {
     setLoading(true);
     setSavedSuccess(false);
+    setNudgeBanner(null);
 
     // 1. Fetch challenge with tasks
     const { challenge } = await fetchChallengeWithTasks(challengeId);
@@ -102,6 +105,7 @@ export default function LogScreen() {
   const handleTaskValueChange = (taskId: string, val: any) => {
     setTaskValues((prev) => ({ ...prev, [taskId]: val }));
     setSavedSuccess(false);
+    setNudgeBanner(null);
   };
 
   const handlePickMedia = (taskId: string, uri: string) => {
@@ -202,6 +206,17 @@ export default function LogScreen() {
       if (earned.length > 0) {
         const badgeDetails = earned.map(a => `${a.badge.name} (+${a.xpAwarded} XP${a.isFirstDomain ? ' [Domain Bonus]' : ''}${a.isFirstHardcore ? ' [Hardcore Bonus]' : ''})`).join('\n');
         Alert.alert('Badges Unlocked! 🏅', `You earned:\n${badgeDetails}`);
+      }
+    }
+
+    // 6. Generate Coaching Nudge if missed tasks
+    if (!challengeFailed && evaluation.compulsory_pct !== 100) {
+      const { logs } = await fetchLogsForChallenge(selectedChallengeId, userId);
+      const weaknesses = analyzeWeaknesses(currentChallenge, logs);
+      const nudge = await generateCoachingNudge(currentChallenge, logs, weaknesses);
+      if (nudge) {
+        setNudgeBanner(nudge);
+        setTimeout(() => setNudgeBanner(null), 10000);
       }
     }
 
@@ -326,10 +341,21 @@ export default function LogScreen() {
             </View>
 
             {/* Saved Toast Banner */}
-            {savedSuccess && (
+            {savedSuccess && !nudgeBanner && (
               <View style={[styles.successBanner, { backgroundColor: theme.accentBg, borderColor: theme.accentBorder }]}>
                 <CheckCircle2 color={theme.accentText} size={18} />
                 <Text style={[styles.successText, { color: theme.accentText }]}>Log saved successfully!</Text>
+              </View>
+            )}
+
+            {/* AI Nudge Banner */}
+            {nudgeBanner && (
+              <View style={[styles.successBanner, { backgroundColor: theme.card, borderColor: theme.primary }]}>
+                <Sparkles color={theme.primary} size={20} />
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={[styles.nudgeTitle, { color: theme.textPrimary }]}>AI Coach Note</Text>
+                  <Text style={[styles.nudgeText, { color: theme.textSecondary }]}>{nudgeBanner.text}</Text>
+                </View>
               </View>
             )}
 
@@ -430,6 +456,8 @@ const styles = StyleSheet.create({
   meterFill: { height: 6, borderRadius: 3 },
   successBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 16 },
   successText: { fontSize: 14, fontWeight: '700' },
+  nudgeTitle: { fontSize: 14, fontWeight: '800', marginBottom: 2 },
+  nudgeText: { fontSize: 13, lineHeight: 18 },
   loadingBox: { paddingVertical: 40, alignItems: 'center' },
   notesInput: { height: 90, borderRadius: 14, paddingHorizontal: 16, paddingTop: 12, fontSize: 14, borderWidth: 1, textAlignVertical: 'top' },
   saveBtn: { height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 24 },

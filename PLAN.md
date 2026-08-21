@@ -168,6 +168,6 @@ total_xp_awarded = Math.round(base_xp * (is_hardcore_exclusive ? 1.5 : 1.0))
 - `[ ]` **Phase 1.5**: Progress Photo Scrubber & Gallery Grid
 - `[ ]` **Phase 2**: Trajectory Engine & Interactive Projection Slider
 - `[ ]` **Phase 4**: Flexibility (Pause Mode & Mid-Challenge Target Edits)
-- `[ ]` **Phase 5**: Analytics & Content (Weekly Recaps & Time-of-day breakdowns)
-- `[ ]` **Phase 6**: Social (Pods & Public Feed)
-- `[ ]` **Phase 7**: AI Layer (Adaptive Difficulty & Smart Nudges)
+- `[x]` **Phase 5**: Analytics & Content (Weekly Recaps & Time-of-day breakdowns)
+- `[x]` **Phase 6**: Social (Pods & Public Feed)
+- `[x]` **Phase 7**: AI Layer (Adaptive Difficulty & Smart Nudges)
