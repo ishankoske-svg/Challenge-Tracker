@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../stores/authStore';
 import { useThemeStore } from '../../stores/themeStore';
+import { THEMES, ThemeKey } from '../../theme/themes';
 import { ThemeSwitcher } from '../../components/ThemeSwitcher';
 import { User, LogOut, ShieldCheck, Palette, Target, CheckCircle2, XCircle, Award, Flame, Zap } from 'lucide-react-native';
 import { BadgeGrid } from '../../components/BadgeGrid';
@@ -13,7 +14,7 @@ import { FailureInsights } from '../../components/FailureInsights';
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
-  const { theme } = useThemeStore();
+  const { theme, themeKey, setTheme } = useThemeStore();
 
   const [loading, setLoading] = useState(true);
   const [earnedKeys, setEarnedKeys] = useState<string[]>([]);
@@ -177,6 +178,61 @@ export default function ProfileScreen() {
                 })
               )}
             </View>
+
+            {/* Themes & Visual Styling */}
+            <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+              <View style={styles.sectionHeaderRow}>
+                <Palette color={theme.accent} size={18} />
+                <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Theme & Appearance</Text>
+              </View>
+              <Text style={[styles.sectionSub, { color: theme.textSecondary, marginBottom: 16 }]}>
+                Choose from 8 tailored color schemes
+              </Text>
+              
+              <View style={styles.themeGrid}>
+                {([
+                  'midnight',
+                  'forest',
+                  'ember',
+                  'light',
+                  'dark',
+                  'lavender',
+                  'gold',
+                  'silver',
+                ] as ThemeKey[]).map((key) => {
+                  const t = THEMES[key];
+                  const isSelected = themeKey === key;
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[
+                        styles.themeItemCard,
+                        {
+                          backgroundColor: isSelected ? theme.accentBg : theme.inputBg,
+                          borderColor: isSelected ? theme.accent : theme.inputBorder,
+                        },
+                      ]}
+                      onPress={() => setTheme(key)}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.themePreviewRow}>
+                        <View style={[styles.colorDot, { backgroundColor: t.bg, borderColor: t.cardBorder, borderWidth: 1 }]} />
+                        <View style={[styles.colorDot, { backgroundColor: t.card }]} />
+                        <View style={[styles.colorDot, { backgroundColor: t.accent }]} />
+                      </View>
+                      <Text style={[styles.themeItemName, { color: isSelected ? theme.accentText : theme.textPrimary }]}>
+                        {t.name}
+                      </Text>
+                      {isSelected && (
+                        <View style={[styles.selectedCheck, { backgroundColor: theme.accent }]}>
+                          <CheckCircle2 color="#FFF" size={12} />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
           </>
         )}
 
@@ -229,4 +285,42 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 10, fontWeight: '800' },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 50, borderRadius: 14, borderWidth: 1, marginBottom: 40 },
   logoutText: { fontSize: 15, fontWeight: '700' },
+  themeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'space-between',
+  },
+  themeItemCard: {
+    width: '48%',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    marginBottom: 4,
+    position: 'relative',
+  },
+  themePreviewRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 8,
+  },
+  colorDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  themeItemName: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  selectedCheck: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
