@@ -5,6 +5,7 @@ import {
   DifficultyMode,
   ChallengeDomain,
   fetchChallenges,
+  isChallengeFailed,
   createChallenge as createChallengeApi,
   deleteChallenge as deleteChallengeApi,
 } from '../lib/challenges';
@@ -15,6 +16,7 @@ import { reconcileUnloggedDaysPenalties } from '../lib/logs';
 interface ChallengeState {
   challenges: Challenge[];
   activeChallenges: Challenge[];
+  failedChallenges: Challenge[];
   isLoading: boolean;
   error: string | null;
 
@@ -38,6 +40,7 @@ interface ChallengeState {
 export const useChallengeStore = create<ChallengeState>((set, get) => ({
   challenges: [],
   activeChallenges: [],
+  failedChallenges: [],
   isLoading: false,
   error: null,
 
@@ -45,23 +48,32 @@ export const useChallengeStore = create<ChallengeState>((set, get) => ({
     set({ isLoading: true, error: null });
     const { challenges: fetched, error } = await fetchChallenges(userId);
 
-    // Reconcile unlogged days penalties for active challenges
+    // Reconcile unlogged days penalties and failure states
     const updatedChallenges = [...fetched];
     for (let i = 0; i < updatedChallenges.length; i++) {
       if (updatedChallenges[i].status === 'active') {
         const { penaltiesAdded, failed } = await reconcileUnloggedDaysPenalties(updatedChallenges[i], userId);
-        if (penaltiesAdded > 0) {
+        const currentPenalties = (updatedChallenges[i].penalties_used || 0) + penaltiesAdded;
+        const isFailed = failed || isChallengeFailed({ ...updatedChallenges[i], penalties_used: currentPenalties });
+        
+        if (penaltiesAdded > 0 || isFailed) {
           updatedChallenges[i] = {
             ...updatedChallenges[i],
-            penalties_used: (updatedChallenges[i].penalties_used || 0) + penaltiesAdded,
-            status: failed ? 'failed' : updatedChallenges[i].status,
+            penalties_used: currentPenalties,
+            status: isFailed ? 'failed' : updatedChallenges[i].status,
           };
         }
+      } else if (isChallengeFailed(updatedChallenges[i])) {
+        updatedChallenges[i] = {
+          ...updatedChallenges[i],
+          status: 'failed',
+        };
       }
     }
 
-    const active = updatedChallenges.filter((c) => c.status === 'active');
-    set({ challenges: updatedChallenges, activeChallenges: active, isLoading: false, error });
+    const active = updatedChallenges.filter((c) => c.status === 'active' && !isChallengeFailed(c));
+    const failed = updatedChallenges.filter((c) => c.status === 'failed' || isChallengeFailed(c));
+    set({ challenges: updatedChallenges, activeChallenges: active, failedChallenges: failed, isLoading: false, error });
   },
 
   addChallenge: async (userId, title, category, description, durationDays, startDate, tasks, difficultyMode, domainTag, templateId) => {

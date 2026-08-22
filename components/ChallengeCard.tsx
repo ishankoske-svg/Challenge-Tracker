@@ -1,9 +1,9 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useThemeStore } from '../stores/themeStore';
-import { Challenge } from '../lib/challenges';
+import { Challenge, isChallengeFailed } from '../lib/challenges';
 import { PenaltyIndicator } from './PenaltyIndicator';
-import { Dumbbell, Code, BookOpen, Globe, Sparkles, ChevronRight, Calendar, CheckCircle2 } from 'lucide-react-native';
+import { Dumbbell, Code, BookOpen, Globe, Sparkles, ChevronRight, Calendar, CheckCircle2, Lock, XCircle } from 'lucide-react-native';
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
   fitness: Dumbbell,
@@ -28,7 +28,8 @@ interface ChallengeCardProps {
 
 export function ChallengeCard({ challenge, onPress }: ChallengeCardProps) {
   const { theme } = useThemeStore();
-  const Icon = CATEGORY_ICONS[challenge.category] || Sparkles;
+  const isFailed = isChallengeFailed(challenge);
+  const Icon = isFailed ? XCircle : (CATEGORY_ICONS[challenge.category] || Sparkles);
 
   // Calculate progress
   const start = new Date(challenge.start_date);
@@ -43,32 +44,67 @@ export function ChallengeCard({ challenge, onPress }: ChallengeCardProps) {
   const maxPenalties = challenge.max_penalties ?? 7;
   const penaltiesUsed = challenge.penalties_used ?? 0;
 
+  const handlePress = () => {
+    if (isFailed) {
+      Alert.alert(
+        'Challenge Failed 💔',
+        'All penalty buffers were exhausted for this challenge. It is permanently locked and cannot be accessed.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    onPress?.(challenge);
+  };
+
   return (
     <TouchableOpacity
-      style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
-      activeOpacity={0.8}
-      onPress={() => onPress?.(challenge)}
+      style={[
+        styles.card,
+        {
+          backgroundColor: isFailed ? (theme.dangerBg || 'rgba(255, 107, 107, 0.08)') : theme.card,
+          borderColor: isFailed ? theme.danger : theme.cardBorder,
+          borderWidth: isFailed ? 2 : 1,
+        },
+      ]}
+      activeOpacity={isFailed ? 0.9 : 0.8}
+      onPress={handlePress}
     >
       <View style={styles.topRow}>
-        <View style={[styles.iconCircle, { backgroundColor: theme.accentBg }]}>
-          <Icon color={theme.accent} size={20} />
+        <View style={[styles.iconCircle, { backgroundColor: isFailed ? 'rgba(255, 107, 107, 0.2)' : theme.accentBg }]}>
+          <Icon color={isFailed ? theme.danger : theme.accent} size={20} />
         </View>
         <View style={styles.titleGroup}>
-          <Text style={[styles.title, { color: theme.textPrimary }]} numberOfLines={1}>
+          <Text style={[styles.title, { color: isFailed ? theme.danger : theme.textPrimary }]} numberOfLines={1}>
             {challenge.title}
           </Text>
           <View style={styles.metaRow}>
-            <View style={[styles.statusBadge, { backgroundColor: (challenge.is_paused ? '#FFA502' : STATUS_COLORS[challenge.status]) + '22' }]}>
-              <View style={[styles.statusDot, { backgroundColor: challenge.is_paused ? '#FFA502' : STATUS_COLORS[challenge.status] }]} />
-              <Text style={[styles.statusText, { color: challenge.is_paused ? '#FFA502' : STATUS_COLORS[challenge.status] }]}>
-                {challenge.is_paused ? '🌴 Paused' : challenge.status.charAt(0).toUpperCase() + challenge.status.slice(1)}
+            <View style={[styles.statusBadge, { backgroundColor: isFailed ? 'rgba(255, 107, 107, 0.2)' : (challenge.is_paused ? '#FFA502' : STATUS_COLORS[challenge.status]) + '22' }]}>
+              <View style={[styles.statusDot, { backgroundColor: isFailed ? theme.danger : (challenge.is_paused ? '#FFA502' : STATUS_COLORS[challenge.status]) }]} />
+              <Text style={[styles.statusText, { color: isFailed ? theme.danger : (challenge.is_paused ? '#FFA502' : STATUS_COLORS[challenge.status]) }]}>
+                {isFailed ? 'Challenge Failed' : challenge.is_paused ? '🌴 Paused' : challenge.status.charAt(0).toUpperCase() + challenge.status.slice(1)}
               </Text>
             </View>
             <PenaltyIndicator compact difficultyMode={mode} maxPenalties={maxPenalties} penaltiesUsed={penaltiesUsed} />
           </View>
         </View>
-        <ChevronRight color={theme.textMuted} size={18} />
+        {isFailed ? (
+          <View style={[styles.lockBadge, { backgroundColor: 'rgba(255, 107, 107, 0.2)' }]}>
+            <Lock color={theme.danger} size={16} />
+          </View>
+        ) : (
+          <ChevronRight color={theme.textMuted} size={18} />
+        )}
       </View>
+
+      {/* Failed Lock Notice */}
+      {isFailed && (
+        <View style={[styles.failedBanner, { backgroundColor: 'rgba(255, 107, 107, 0.15)', borderColor: theme.danger }]}>
+          <Lock color={theme.danger} size={14} />
+          <Text style={[styles.failedBannerText, { color: theme.danger }]}>
+            Penalties exhausted ({penaltiesUsed}/{maxPenalties} used). Access locked.
+          </Text>
+        </View>
+      )}
 
       {/* Progress Bar */}
       <View style={styles.progressSection}>
@@ -76,15 +112,15 @@ export function ChallengeCard({ challenge, onPress }: ChallengeCardProps) {
           <View
             style={[
               styles.progressFill,
-              { width: `${progressPercent}%`, backgroundColor: theme.accent },
+              { width: `${progressPercent}%`, backgroundColor: isFailed ? theme.danger : theme.accent },
             ]}
           />
         </View>
         <View style={styles.progressInfo}>
-          <Text style={[styles.progressText, { color: theme.textSecondary }]}>
-            Day {Math.min(daysPassed, totalDays)} of {totalDays}
+          <Text style={[styles.progressText, { color: isFailed ? theme.danger : theme.textSecondary }]}>
+            Day {Math.min(daysPassed, totalDays)} of {totalDays} {isFailed ? '· Terminated' : ''}
           </Text>
-          <Text style={[styles.progressPercent, { color: theme.accentText }]}>
+          <Text style={[styles.progressPercent, { color: isFailed ? theme.danger : theme.accentText }]}>
             {progressPercent}%
           </Text>
         </View>
@@ -95,7 +131,7 @@ export function ChallengeCard({ challenge, onPress }: ChallengeCardProps) {
         <View style={styles.footerStat}>
           <Calendar color={theme.textMuted} size={13} />
           <Text style={[styles.footerText, { color: theme.textMuted }]}>
-            {daysLeft > 0 ? `${daysLeft} days left` : 'Ended'}
+            {isFailed ? 'Failed' : daysLeft > 0 ? `${daysLeft} days left` : 'Ended'}
           </Text>
         </View>
         <View style={styles.footerStat}>
@@ -183,6 +219,28 @@ const styles = StyleSheet.create({
   progressPercent: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  lockBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  failedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  failedBannerText: {
+    fontSize: 12,
+    fontWeight: '700',
+    flex: 1,
   },
   footer: {
     flexDirection: 'row',

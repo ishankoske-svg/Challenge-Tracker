@@ -27,6 +27,16 @@ export function calculateMaxPenalties(mode: DifficultyMode, durationDays: number
   return Math.max(1, allowed);
 }
 
+export function isChallengeFailed(challenge: Challenge): boolean {
+  if (challenge.status === 'failed') return true;
+  if (challenge.difficulty_mode === 'relaxed') return false;
+  if (challenge.difficulty_mode === 'hardcore') {
+    return (challenge.penalties_used || 0) > 0;
+  }
+  const max = challenge.max_penalties ?? 0;
+  return (challenge.penalties_used || 0) > max;
+}
+
 export interface ChallengeTask {
   id: string;
   challenge_id: string;

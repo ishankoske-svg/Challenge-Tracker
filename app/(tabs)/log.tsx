@@ -15,12 +15,12 @@ import { useChallengeStore } from '../../stores/challengeStore';
 import { ThemeSwitcher } from '../../components/ThemeSwitcher';
 import { TaskRow } from '../../components/TaskRow';
 import { PenaltyIndicator } from '../../components/PenaltyIndicator';
-import { Challenge, fetchChallengeWithTasks, updateChallengeStatus, incrementPenalty } from '../../lib/challenges';
+import { Challenge, fetchChallengeWithTasks, updateChallengeStatus, incrementPenalty, isChallengeFailed } from '../../lib/challenges';
 import { fetchLogForDate, saveLog, getStreakForChallenge, evaluateDayCompletion, isWithinGraceWindow, getDayNumber, fetchLogsForChallenge } from '../../lib/logs';
 import { checkAndAwardBadges } from '../../lib/badges';
 import { analyzeWeaknesses, generateCoachingNudge } from '../../lib/ai';
 import { uploadProgressMedia, fetchMediaForLog } from '../../lib/storage';
-import { CalendarCheck, Flame, CheckCircle2, AlertCircle, Shield, Sparkles, Heart } from 'lucide-react-native';
+import { CalendarCheck, Flame, CheckCircle2, AlertCircle, Shield, Sparkles, Heart, Lock, XCircle } from 'lucide-react-native';
 
 export default function LogScreen() {
   const { user } = useAuthStore();
@@ -124,6 +124,11 @@ export default function LogScreen() {
 
   const handleSaveLog = async () => {
     if (!selectedChallengeId || !currentChallenge) return;
+
+    if (isChallengeFailed(currentChallenge)) {
+      Alert.alert('Challenge Failed 💔', 'This challenge has failed because penalties are exhausted. Daily logging is locked.');
+      return;
+    }
 
     if (!isWithinGraceWindow(logDate)) {
       Alert.alert('Grace Window Expired', 'Logs for past days can only be saved until 6:00 AM the next morning.');
@@ -300,6 +305,19 @@ export default function LogScreen() {
               </View>
             </View>
 
+            {/* Failed Notice Banner */}
+            {isChallengeFailed(currentChallenge) && (
+              <View style={[styles.failedScreenCard, { backgroundColor: 'rgba(255, 107, 107, 0.15)', borderColor: theme.danger }]}>
+                <XCircle color={theme.danger} size={28} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.failedScreenTitle, { color: theme.danger }]}>Challenge Failed & Terminated 💔</Text>
+                  <Text style={[styles.failedScreenSub, { color: theme.textSecondary }]}>
+                    All penalty buffers ({currentChallenge.penalties_used ?? 0}/{currentChallenge.max_penalties ?? 0}) were exhausted. Daily logging has been permanently locked.
+                  </Text>
+                </View>
+              </View>
+            )}
+
             {/* Heart / Lives Penalty Indicator */}
             <PenaltyIndicator
               difficultyMode={currentChallenge.difficulty_mode || 'medium'}
@@ -405,13 +423,29 @@ export default function LogScreen() {
 
                 {/* Save CTA Button */}
                 <TouchableOpacity
-                  style={[styles.saveBtn, { backgroundColor: savedSuccess ? '#10b981' : theme.accent }]}
+                  style={[
+                    styles.saveBtn,
+                    {
+                      backgroundColor: isChallengeFailed(currentChallenge)
+                        ? 'rgba(255, 107, 107, 0.25)'
+                        : savedSuccess
+                        ? '#10b981'
+                        : theme.accent,
+                      borderColor: isChallengeFailed(currentChallenge) ? theme.danger : 'transparent',
+                      borderWidth: isChallengeFailed(currentChallenge) ? 1.5 : 0,
+                    },
+                  ]}
                   activeOpacity={0.85}
                   onPress={handleSaveLog}
-                  disabled={saving || savedSuccess}
+                  disabled={saving || savedSuccess || isChallengeFailed(currentChallenge)}
                 >
                   {saving ? (
                     <ActivityIndicator color="#FFF" />
+                  ) : isChallengeFailed(currentChallenge) ? (
+                    <View style={styles.btnContent}>
+                      <Lock color={theme.danger} size={20} />
+                      <Text style={[styles.saveBtnText, { color: theme.danger }]}>Challenge Failed & Locked</Text>
+                    </View>
                   ) : savedSuccess ? (
                     <View style={styles.btnContent}>
                       <CheckCircle2 color="#FFF" size={20} />
@@ -448,6 +482,24 @@ const styles = StyleSheet.create({
   fireIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
   streakCount: { fontSize: 18, fontWeight: '800' },
   streakSub: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  failedScreenCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    marginBottom: 14,
+  },
+  failedScreenTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  failedScreenSub: {
+    fontSize: 12,
+    lineHeight: 17,
+  },
   scoreMeterCard: { borderRadius: 16, padding: 14, borderWidth: 1, marginBottom: 16 },
   meterRow: {},
   meterHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },

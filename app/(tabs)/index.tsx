@@ -12,7 +12,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { theme } = useThemeStore();
-  const { activeChallenges, challenges, isLoading, loadChallenges } = useChallengeStore();
+  const { activeChallenges, failedChallenges, challenges, isLoading, loadChallenges } = useChallengeStore();
 
   const displayName = user?.display_name || user?.email?.split('@')[0] || 'Challenger';
   const userId = user?.id || 'demo-user';
@@ -82,11 +82,29 @@ export default function HomeScreen() {
 
         {/* Active Challenge Cards */}
         {activeChallenges.map((challenge) => (
-          <ChallengeCard key={challenge.id} challenge={challenge} />
+          <ChallengeCard
+            key={challenge.id}
+            challenge={challenge}
+            onPress={() => router.push('/(tabs)/log')}
+          />
         ))}
 
+        {/* Failed Challenges Section */}
+        {failedChallenges.length > 0 && (
+          <View style={{ marginTop: 20 }}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: theme.danger }]}>
+                Failed Challenges ({failedChallenges.length})
+              </Text>
+            </View>
+            {failedChallenges.map((challenge) => (
+              <ChallengeCard key={challenge.id} challenge={challenge} />
+            ))}
+          </View>
+        )}
+
         {/* Empty State */}
-        {!isLoading && activeChallenges.length === 0 && (
+        {!isLoading && activeChallenges.length === 0 && failedChallenges.length === 0 && (
           <View style={[styles.emptyCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Target color={theme.textMuted} size={48} />
             <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No Active Challenges Yet</Text>

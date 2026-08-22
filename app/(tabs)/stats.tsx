@@ -8,8 +8,8 @@ import { PenaltyIndicator } from '../../components/PenaltyIndicator';
 import { TrajectoryCard } from '../../components/TrajectoryCard';
 import { PhotoGalleryModal } from '../../components/PhotoGalleryModal';
 import { ChallengeSettingsModal } from '../../components/ChallengeSettingsModal';
-import { BarChart3, TrendingUp, Sparkles, AlertCircle, Calendar, Flag, Image as ImageIcon, Sliders, Palmtree } from 'lucide-react-native';
-import { fetchChallengeWithTasks, Challenge, ChallengeTask, updateChallengeStatus } from '../../lib/challenges';
+import { BarChart3, TrendingUp, Sparkles, AlertCircle, Calendar, Flag, Image as ImageIcon, Sliders, Palmtree, XCircle, Lock } from 'lucide-react-native';
+import { fetchChallengeWithTasks, Challenge, ChallengeTask, updateChallengeStatus, isChallengeFailed } from '../../lib/challenges';
 import { fetchLogsForChallenge, getStreakForChallenge, DailyLog } from '../../lib/logs';
 import { fetchChallengePhotos, ChallengePhotoItem } from '../../lib/storage';
 import { generateProgressSummary, analyzeWeaknesses, generateCoachingNudge, suggestDifficultyAdjustment } from '../../lib/ai';
@@ -240,6 +240,19 @@ export default function StatsScreen() {
 
         {!loading && currentChallenge && (
           <>
+            {/* Failed Notice Banner */}
+            {isChallengeFailed(currentChallenge) && (
+              <View style={[styles.failedBanner, { backgroundColor: 'rgba(255, 107, 107, 0.15)', borderColor: theme.danger }]}>
+                <XCircle color={theme.danger} size={22} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.failedBannerTitle, { color: theme.danger }]}>Challenge Failed & Terminated 💔</Text>
+                  <Text style={[styles.failedBannerSub, { color: theme.textSecondary }]}>
+                    All penalty buffers ({currentChallenge.penalties_used ?? 0}/{currentChallenge.max_penalties ?? 0}) were exhausted. Daily logging and mid-challenge changes are permanently disabled.
+                  </Text>
+                </View>
+              </View>
+            )}
+
             {/* Heart / Penalty Indicator */}
             <PenaltyIndicator
               difficultyMode={currentChallenge.difficulty_mode || 'medium'}
@@ -261,13 +274,30 @@ export default function StatsScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() => setShowSettingsModal(true)}
-                style={[styles.quickActionBtn, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+                onPress={() => {
+                  if (isChallengeFailed(currentChallenge)) {
+                    Alert.alert('Challenge Failed', 'This challenge has failed and vacation or target settings cannot be adjusted.');
+                    return;
+                  }
+                  setShowSettingsModal(true);
+                }}
+                style={[
+                  styles.quickActionBtn,
+                  {
+                    backgroundColor: isChallengeFailed(currentChallenge) ? 'rgba(255, 107, 107, 0.1)' : theme.card,
+                    borderColor: isChallengeFailed(currentChallenge) ? theme.danger : theme.cardBorder,
+                    opacity: isChallengeFailed(currentChallenge) ? 0.6 : 1,
+                  },
+                ]}
                 activeOpacity={0.8}
               >
-                <Palmtree color="#FFA502" size={16} />
-                <Text style={[styles.quickActionText, { color: theme.textPrimary }]}>
-                  {currentChallenge.is_paused ? '🌴 Paused' : 'Vacation & Goals'}
+                {isChallengeFailed(currentChallenge) ? (
+                  <Lock color={theme.danger} size={16} />
+                ) : (
+                  <Palmtree color="#FFA502" size={16} />
+                )}
+                <Text style={[styles.quickActionText, { color: isChallengeFailed(currentChallenge) ? theme.danger : theme.textPrimary }]}>
+                  {isChallengeFailed(currentChallenge) ? 'Settings Locked' : currentChallenge.is_paused ? '🌴 Paused' : 'Vacation & Goals'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -506,4 +536,22 @@ const styles = StyleSheet.create({
   giveUpCancelText: { fontSize: 14, fontWeight: '700' },
   giveUpConfirm: { flex: 1, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   giveUpConfirmText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  failedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    marginBottom: 16,
+  },
+  failedBannerTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  failedBannerSub: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
 });
