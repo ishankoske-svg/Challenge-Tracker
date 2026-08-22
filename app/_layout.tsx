@@ -6,9 +6,24 @@ import { useAuthStore } from '../stores/authStore';
 import { useThemeStore } from '../stores/themeStore';
 
 // Suppress harmless DOM prop warnings caused by victory-native/react-native-svg on the web
+if (typeof window !== 'undefined') {
+  const originalConsoleError = console.error;
+  console.error = (...args: any[]) => {
+    if (
+      typeof args[0] === 'string' &&
+      (args[0].includes('React does not recognize the `') ||
+       args[0].includes('for a non-boolean attribute'))
+    ) {
+      return;
+    }
+    originalConsoleError(...args);
+  };
+}
+
 LogBox.ignoreLogs([
-  'React does not recognize the `accessib',
+  'React does not recognize the `accessibilityHint`',
   'React does not recognize the `testID`',
+  'React does not recognize the `',
 ]);
 
 export default function RootLayout() {
