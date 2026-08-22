@@ -20,24 +20,16 @@ export function CompletionHeatmap({ cells }: CompletionHeatmapProps) {
   });
 
   const getCellColor = (intensity: number) => {
-    if (intensity === 0) return theme.surface;
-    // Base color for intensity > 0
-    // We can use the primary color and adjust opacity
-    // Assuming primary is a hex string like #4ade80, we can use rgba
-    // But since we can't easily parse hex here without a library, we'll use a hack or just use a fixed color based on theme
-    
-    // As a simple approach, we'll use the theme.primary color if it's vibrant, but we can't easily set opacity on hex.
-    // Let's use the intensity to choose from 4 preset shades. 
-    // Wait, the primary color can be anything. We can return it with an opacity using hex notation if it's #RRGGBB.
-    const hex = theme.primary;
-    if (hex.startsWith('#') && hex.length === 7) {
+    if (intensity === 0) return theme?.surface || theme?.inputBg || '#151322';
+    const hex = theme?.primary || theme?.accent || '#7C6FCD';
+    if (hex && typeof hex === 'string' && hex.startsWith('#') && hex.length === 7) {
       // 0.2 to 1.0 opacity
       const alpha = Math.max(0.2, intensity);
       const alphaHex = Math.round(alpha * 255).toString(16).padStart(2, '0');
       return `${hex}${alphaHex}`;
     }
     
-    return theme.primary; 
+    return hex; 
   };
 
   return (

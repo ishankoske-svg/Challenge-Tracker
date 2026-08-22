@@ -128,6 +128,7 @@ export async function fetchMediaForLog(
 }
 
 export async function getMediaUrl(storagePath: string): Promise<string> {
+  if (!storagePath) return '';
   if (!isSupabaseConfigured() || storagePath.startsWith('file://') || storagePath.startsWith('data:') || storagePath.startsWith('blob:')) {
     return storagePath;
   }

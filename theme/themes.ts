@@ -23,6 +23,11 @@ export interface ThemeColors {
   inputBg: string;
   inputBorder: string;
   shadowColor: string;
+  // Aliases for convenience & backward compatibility
+  primary: string;
+  surface: string;
+  border: string;
+  text: string;
 }
 
 export const THEMES: Record<ThemeKey, ThemeColors> = {
@@ -49,6 +54,10 @@ export const THEMES: Record<ThemeKey, ThemeColors> = {
     inputBg: '#151322',
     inputBorder: '#2D2945',
     shadowColor: '#000000',
+    primary: '#7C6FCD',
+    surface: '#151322',
+    border: '#2D2945',
+    text: '#FFFFF5',
   },
   forest: {
     name: 'Forest',
@@ -73,6 +82,10 @@ export const THEMES: Record<ThemeKey, ThemeColors> = {
     inputBg: '#0F1E19',
     inputBorder: '#1F382F',
     shadowColor: '#000000',
+    primary: '#1D9E75',
+    surface: '#0F1E19',
+    border: '#1F382F',
+    text: '#F0F9F5',
   },
   ember: {
     name: 'Ember',
@@ -97,5 +110,9 @@ export const THEMES: Record<ThemeKey, ThemeColors> = {
     inputBg: '#1E1310',
     inputBorder: '#3F2822',
     shadowColor: '#000000',
+    primary: '#D85A30',
+    surface: '#1E1310',
+    border: '#3F2822',
+    text: '#FFF6F4',
   },
 };
